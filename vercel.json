@@ -1,13 +1,30 @@
 {
-  "buildCommand": "cd locentra-app && npm install && npm run build",
-  "outputDirectory": "locentra-app/build",
-  "devCommand": "cd locentra-app && npm start",
-  "installCommand": "cd locentra-app && npm install",
-  "framework": null,
-  "rewrites": [
+  "version": 2,
+  "builds": [
     {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "src": "locentra-app/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "build"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/static/(.*)",
+      "dest": "/locentra-app/build/static/$1"
+    },
+    {
+      "src": "/models/(.*)",
+      "dest": "/locentra-app/build/models/$1"
+    },
+    {
+      "src": "/data/(.*)",
+      "dest": "/locentra-app/build/data/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/locentra-app/build/index.html"
     }
   ]
 }
