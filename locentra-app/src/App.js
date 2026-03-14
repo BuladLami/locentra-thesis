@@ -1,55 +1,50 @@
 import React, { useState, useEffect } from 'react';
-import * as tf from '@tensorflow/tfjs';
 import { MapContainer, TileLayer, CircleMarker, Popup, Tooltip, Polygon, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './App.css';
 
 // ── Global state ──
-let normParams = null;
+// (No global state needed - all data comes from JSON)
 
-// ── Talomo District Boundary (fitted to actual data coverage) ──
+// ── Talomo District Boundary (approximate irregular shape) ──
+// Note: Replace with actual boundary coordinates from GeoJSON/shapefile if available
 const talomoBoundary = [
-  [7.045, 125.530],
-  [7.045, 125.575],
-  [7.072, 125.575],
-  [7.072, 125.530],
-  [7.045, 125.530]
+  [7.020, 125.480],  // Northwest corner
+  [7.030, 125.460],  // Further west
+  [7.050, 125.450],  // West side
+  [7.070, 125.455],  // Southwest
+  [7.085, 125.470],  // South
+  [7.095, 125.490],  // Southeast inland
+  [7.100, 125.520],  // South central
+  [7.095, 125.550],  // Southeast coast
+  [7.085, 125.580],  // East coast
+  [7.075, 125.600],  // Northeast coast
+  [7.065, 125.615],  // Far northeast
+  [7.050, 125.620],  // East side
+  [7.035, 125.610],  // Northeast inland
+  [7.025, 125.590],  // North central
+  [7.020, 125.560],  // North
+  [7.018, 125.530],  // Northwest inland
+  [7.020, 125.480]   // Back to start
 ];
 
 // ── Helper functions ──
-function getRecommendationLevel(score) {
-  if (score >= 0.6) return 1; // Highly Recommended
-  if (score >= 0.4) return 2; // Recommended
-  if (score >= 0.2) return 3; // Conditionally Recommended
-  return 0; // Not Recommended
-}
-
-function getRecommendationText(level) {
-  const texts = {
-    1: 'Highly Recommended',
-    2: 'Recommended',
-    3: 'Conditionally Recommended',
-    0: 'Not Recommended'
-  };
-  return texts[level] || 'Not Recommended';
-}
-
 function getRecommendationColor(level) {
   const colors = {
-    1: '#1a9850',
-    2: '#91cf60',
-    3: '#fee08b',
-    0: '#d73027'
+    1: '#fee08b',      // Level 1: Conditionally Suitable - Yellow
+    2: '#91cf60',      // Level 2: Moderately Suitable - Light Green
+    3: '#1a9850',      // Level 3: Highly Suitable - Dark Green
+    0: '#d73027'       // Not Suitable - Red
   };
   return colors[level] || '#999';
 }
 
 function classifyScore(score) {
-  if (score <= 0.2) return 'Very Low';
-  if (score <= 0.4) return 'Low';
-  if (score <= 0.6) return 'Moderate';
-  if (score <= 0.8) return 'High';
-  return 'Very High';
+  if (score < 0.25) return 'Very Low';
+  if (score < 0.40) return 'Low';
+  if (score < 0.60) return 'Moderate';
+  return 'High';
 }
 
 function getColor(classification) {
@@ -57,10 +52,33 @@ function getColor(classification) {
     'Very Low': '#d73027',
     'Low': '#fc8d59',
     'Moderate': '#fee08b',
-    'High': '#91cf60',
-    'Very High': '#1a9850',
+    'High': '#1a9850',
   };
   return colors[classification] || '#999';
+}
+
+// Tooltip helper component
+function InfoTooltip({ text }) {
+  return null; // No longer needed, using native title attributes
+}
+
+// Get recommendation level from score
+function getRecommendationLevel(score) {
+  if (score >= 0.6) return 3; // Highly Suitable
+  if (score >= 0.4) return 2; // Moderately Suitable
+  if (score >= 0.2) return 1; // Conditionally Suitable
+  return 0; // Not Suitable
+}
+
+// Get recommendation text from level
+function getRecommendationText(level) {
+  const texts = {
+    3: 'Highly Suitable',
+    2: 'Moderately Suitable',
+    1: 'Conditionally Suitable',
+    0: 'Not Suitable'
+  };
+  return texts[level] || 'Unknown';
 }
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -99,11 +117,6 @@ export default function App() {
   const [searchLon, setSearchLon] = useState('');
   const [hasSearched, setHasSearched] = useState(false);
   const [evalPoint, setEvalPoint] = useState(null);
-  const [isEvaluating, setIsEvaluating] = useState(false);
-  
-  // Models state
-  const [modelA, setModelA] = useState(null);
-  const [modelB, setModelB] = useState(null);
   
   // Evaluation mode specific coordinates
   const [evalLat, setEvalLat] = useState('');
@@ -127,29 +140,23 @@ export default function App() {
   
   // Mode switch confirmation
   const [pendingMode, setPendingMode] = useState(null);
+  
+  // Search area change confirmation
+  const [pendingSearchLocation, setPendingSearchLocation] = useState(null);
 
-  // ── Load models and data on mount ──
+  // ── Load data on mount ──
   useEffect(() => {
     async function init() {
       try {
-        const loadedModelA = await tf.loadLayersModel('/models/model_a/model.json');
-        const loadedModelB = await tf.loadLayersModel('/models/model_b/model.json');
-        
-        setModelA(loadedModelA);
-        setModelB(loadedModelB);
-
-        const normRes = await fetch('/data/normalization_params.json');
-        normParams = await normRes.json();
-
         const sitesRes = await fetch('/data/candidate_sites.json');
         const sitesData = await sitesRes.json();
         setSites(sitesData);
         setReady(true);
         
-        console.log('Models loaded successfully');
+        console.log('Data loaded successfully');
       } catch (error) {
-        console.error('Error loading models:', error);
-        alert('Failed to load models. Please refresh the page.');
+        console.error('Error loading data:', error);
+        alert('Failed to load site data. Please refresh the page.');
       }
     }
     init();
@@ -157,13 +164,14 @@ export default function App() {
 
   // ── Recommendation Mode ──
   function runRecommendation(lat, lon) {
-    const radius = parseFloat(searchRadius);
+    const radiusMeters = parseFloat(searchRadius);
+    const radiusKm = radiusMeters / 1000; // Convert meters to km
     
     let nearby = sites.filter(
-      (s) => haversineKm(lat, lon, s.latitude, s.longitude) <= radius
+      (s) => haversineKm(lat, lon, s.latitude, s.longitude) <= radiusKm
     );
 
-    console.log(`Found ${nearby.length} sites within ${radius}km`);
+    console.log(`Found ${nearby.length} sites within ${radiusMeters}m (${radiusKm}km)`);
 
     // Apply optional filters only if they have values
     if (minPopulation && minPopulation !== '' && !isNaN(parseFloat(minPopulation))) {
@@ -213,86 +221,62 @@ export default function App() {
   }
 
   // ── Evaluation Mode ──
-  async function runEvaluation(lat, lon) {
-    if (!modelA || !modelB) {
-      console.error('Models not loaded yet');
-      setEvalError('Models are still loading. Please wait a moment and try again');
+  function runEvaluation(lat, lon) {
+    setEvalError('');
+    setEvalPoint({ lat, lon });
+    
+    // Find nearest site
+    let minDist = Infinity;
+    let nearest = null;
+
+    sites.forEach((site) => {
+      const dist = haversineKm(lat, lon, site.latitude, site.longitude);
+      if (dist < minDist) {
+        minDist = dist;
+        nearest = site;
+      }
+    });
+
+    if (!nearest) {
+      setEvalError('No sites found in the area');
+      setEvalResult(null);
       return;
     }
 
-    setEvalError('');
-    setIsEvaluating(true);
-    setEvalPoint({ lat, lon });
-    
-    // Normalize input features
-    const buildingDensity = 0.5; // Placeholder - would come from GIS data
-    const roadAccessibility = 0.5;
-    const facilityDistance = 0.5;
-    const flood = 0.3;
-    const landslide = 0.2;
-    const stormsurge = 0.1;
-
-    try {
-      // Prepare inputs for both models
-      const inputA = tf.tensor2d([[buildingDensity, roadAccessibility, facilityDistance]]);
-      const inputB = tf.tensor2d([[buildingDensity, roadAccessibility, facilityDistance, flood, landslide, stormsurge]]);
-
-      // Get predictions
-      const predA = modelA.predict(inputA);
-      const predB = modelB.predict(inputB);
-      
-      const scoreA = (await predA.data())[0];
-      const scoreB = (await predB.data())[0];
-
-      // Clean up tensors
-      inputA.dispose();
-      inputB.dispose();
-      predA.dispose();
-      predB.dispose();
-
-      // Classify scores
-      const classA = classifyScore(scoreA);
-      const classB = classifyScore(scoreB);
-      
-      const levelA = getRecommendationLevel(scoreA);
-      const levelB = getRecommendationLevel(scoreB);
-
-      const result = {
-        lat,
-        lon,
-        scoreA,
-        scoreB,
-        classA,
-        classB,
-        levelA,
-        levelB,
-        factors: {
-          buildingDensity,
-          roadAccessibility,
-          facilityDistance,
-          flood,
-          landslide,
-          stormsurge
-        }
-      };
-
-      console.log('Evaluation result:', result);
-      setEvalResult(result);
-      setResults([]);
-      setIsEvaluating(false);
-      
-      // Scroll to results
-      setTimeout(() => {
-        const resultsEl = document.querySelector('.results');
-        if (resultsEl) {
-          resultsEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
-      }, 100);
-    } catch (error) {
-      console.error('Error during evaluation:', error);
-      setEvalError('Error during evaluation: ' + error.message);
-      setIsEvaluating(false);
+    // Check if the location is in the sea or outside the district
+    // If the nearest site is more than 1km away, it's likely in the sea
+    if (minDist > 1.0) {
+      setEvalError('This location appears to be in the sea or outside Talomo District. Please select a location on land within the district.');
+      setEvalResult(null);
+      return;
     }
+
+    // Use the nearest site's pre-computed data from candidate_sites.json
+    setEvalResult({
+      lat,
+      lon,
+      site: nearest,
+      distance: minDist,
+      outsideCoverage: minDist > 0.5, // More than 500m away
+      // Suitability scores from Python model
+      scoreA: nearest.pred_score_A,
+      scoreB: nearest.pred_score_B,
+      classA: nearest.class_A,
+      classB: nearest.class_B,
+      levelA: nearest.rec_level_A,
+      levelB: nearest.rec_level_B,
+      rankA: nearest.rank_A,
+      rankB: nearest.rank_B,
+      // Location factors
+      factors: {
+        buildingDensity: nearest.building_density_norm,
+        roadAccessibility: nearest.road_accessibility_norm,
+        facilityDistance: nearest.facility_distance_norm,
+        flood: nearest.flood_norm,
+        landslide: nearest.landslide_norm,
+        stormsurge: nearest.stormsurge_norm
+      }
+    });
   }
 
   // ── Handle exit map ──
@@ -345,12 +329,42 @@ export default function App() {
   function cancelModeSwitch() {
     setPendingMode(null);
   }
+  
+  function confirmSearchAreaChange() {
+    if (pendingSearchLocation) {
+      if (pendingSearchLocation.isManual) {
+        // Manual input change
+        setSearchLat(pendingSearchLocation.newLat);
+        setSearchLon(pendingSearchLocation.newLon);
+      } else {
+        // Map click change
+        setSearchLat(pendingSearchLocation.lat.toFixed(6));
+        setSearchLon(pendingSearchLocation.lon.toFixed(6));
+      }
+      setResults([]);
+      setSelectedSite(null);
+      setHasSearched(false);
+      setRecommendError('');
+      setPendingSearchLocation(null);
+    }
+  }
+  
+  function cancelSearchAreaChange() {
+    setPendingSearchLocation(null);
+  }
+  
   function handleMapClick(lat, lon) {
     if (mode === 'recommendation') {
-      // In recommendation mode, set search center coordinates
-      setSearchLat(lat.toFixed(6));
-      setSearchLon(lon.toFixed(6));
-      setRecommendError('');
+      // In recommendation mode, check if there are existing results
+      if (hasSearched && results.length > 0) {
+        // Show confirmation dialog when trying to change search center after getting results
+        setPendingSearchLocation({ lat, lon });
+      } else {
+        // No results yet, directly set coordinates
+        setSearchLat(lat.toFixed(6));
+        setSearchLon(lon.toFixed(6));
+        setRecommendError('');
+      }
     } else {
       // In evaluation mode, set evaluation coordinates and run immediately
       setEvalLat(lat.toFixed(6));
@@ -366,15 +380,31 @@ export default function App() {
     
     const lat = parseFloat(searchLat);
     const lon = parseFloat(searchLon);
-    const radius = parseFloat(searchRadius);
+    const radiusMeters = parseFloat(searchRadius);
     
     if (isNaN(lat) || isNaN(lon)) {
       setRecommendError('Please click on the map or enter valid coordinates');
       return;
     }
     
-    if (isNaN(radius) || radius <= 0 || radius > 50) {
-      setRecommendError('Please enter a valid radius between 0.1 and 50 km');
+    if (isNaN(radiusMeters) || radiusMeters < 100 || radiusMeters > 90000) {
+      setRecommendError('Please enter a valid radius between 100 and 90,000 meters');
+      return;
+    }
+    
+    // Check if the search center is in the sea or outside the district
+    // Find nearest site to the search center
+    let minDist = Infinity;
+    sites.forEach((site) => {
+      const dist = haversineKm(lat, lon, site.latitude, site.longitude);
+      if (dist < minDist) {
+        minDist = dist;
+      }
+    });
+    
+    // If the nearest site is more than 1km away, it's likely in the sea or outside district
+    if (minDist > 1.0) {
+      setRecommendError('This location appears to be in the sea or outside Talomo District. Please select a location on land within the district.');
       return;
     }
     
@@ -400,8 +430,8 @@ export default function App() {
   if (!ready) {
     return (
       <div className="loading">
-        <h2>Loading Locentra...</h2>
-        <p>Initializing TensorFlow.js models and candidate site data.</p>
+        <h2>Loading POLARIS...</h2>
+        <p>Loading site data and preparing the map.</p>
       </div>
     );
   }
@@ -430,10 +460,10 @@ export default function App() {
           textAlign: 'center'
         }}>
           <h1 style={{ color: '#1a5276', fontSize: '32px', marginBottom: '16px' }}>
-            Welcome to Locentra
+            Welcome to POLARIS
           </h1>
           <p style={{ color: '#666', fontSize: '16px', marginBottom: '32px', lineHeight: '1.6' }}>
-            GIS-Based Decision Support for Health Facility Site Selection
+            Priority-Optimized Location and Risk-Adaptive Infrastructure Siting
           </p>
           
           <h3 style={{ color: '#1a5276', fontSize: '20px', marginBottom: '24px' }}>
@@ -520,7 +550,7 @@ export default function App() {
     <div className="app">
       {/* Navigation Bar */}
       <nav style={{
-        backgroundColor: '#1a5276',
+        backgroundColor: '#0891b2',
         padding: '16px 0',
         marginBottom: '20px',
         boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
@@ -534,9 +564,9 @@ export default function App() {
           alignItems: 'center'
         }}>
           <div>
-            <h1 style={{ color: 'white', margin: 0, fontSize: '24px' }}>Locentra</h1>
+            <h1 style={{ color: 'white', margin: 0, fontSize: '24px' }}>POLARIS</h1>
             <p style={{ color: 'rgba(255,255,255,0.8)', margin: '4px 0 0 0', fontSize: '13px' }}>
-              GIS-Based Decision Support System
+              Priority-Optimized Location and Risk-Adaptive Infrastructure Siting
             </p>
           </div>
           
@@ -549,7 +579,7 @@ export default function App() {
                 border: mode === 'recommendation' ? '2px solid white' : '2px solid transparent',
                 borderRadius: '6px',
                 backgroundColor: mode === 'recommendation' ? 'white' : 'rgba(255,255,255,0.1)',
-                color: mode === 'recommendation' ? '#1a5276' : 'white',
+                color: mode === 'recommendation' ? '#0891b2' : 'white',
                 cursor: 'pointer',
                 fontSize: '14px',
                 fontWeight: '600',
@@ -566,7 +596,7 @@ export default function App() {
                 border: mode === 'evaluation' ? '2px solid white' : '2px solid transparent',
                 borderRadius: '6px',
                 backgroundColor: mode === 'evaluation' ? 'white' : 'rgba(255,255,255,0.1)',
-                color: mode === 'evaluation' ? '#1a5276' : 'white',
+                color: mode === 'evaluation' ? '#0891b2' : 'white',
                 cursor: 'pointer',
                 fontSize: '14px',
                 fontWeight: '600',
@@ -668,47 +698,88 @@ export default function App() {
         </div>
       )}
 
+      {/* Search Area Change Confirmation Dialog */}
+      {pendingSearchLocation && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          zIndex: 10000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            padding: '32px',
+            maxWidth: '450px',
+            boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3)'
+          }}>
+            <h3 style={{ color: '#1a5276', marginBottom: '16px', fontSize: '20px' }}>
+              Change Current Search Area?
+            </h3>
+            <p style={{ color: '#666', marginBottom: '24px', lineHeight: '1.6' }}>
+              Changing the search center will clear your current recommended sites and results. Do you want to continue?
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={cancelSearchAreaChange}
+                style={{
+                  padding: '10px 20px',
+                  border: '1px solid #ccc',
+                  borderRadius: '6px',
+                  backgroundColor: 'white',
+                  color: '#333',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmSearchAreaChange}
+                style={{
+                  padding: '10px 20px',
+                  border: 'none',
+                  borderRadius: '6px',
+                  backgroundColor: '#1a5276',
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600'
+                }}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="header">
-        <p>GIS-Based Decision Support for Health Facility Site Selection</p>
-        {!modelA || !modelB ? (
-          <div style={{ 
-            marginTop: '10px', 
-            padding: '8px 16px', 
-            backgroundColor: '#fff3cd', 
-            borderRadius: '4px',
-            display: 'inline-block',
-            fontSize: '14px'
-          }}>
-            ⏳ Models are loading...
-          </div>
-        ) : (
-          <div style={{ 
-            marginTop: '10px', 
-            padding: '8px 16px', 
-            backgroundColor: '#d4edda', 
-            borderRadius: '4px',
-            display: 'inline-block',
-            fontSize: '14px',
-            color: '#155724'
-          }}>
-            ✓ Models ready
-          </div>
-        )}
+        <p>Find the best locations for health facilities in Talomo District</p>
       </header>
 
       {/* ── Controls ── */}
       <div className="controls">
         <div className="control-row">
           <div className="control-group">
-            <label>Hazard Config:</label>
+            <label title="Choose whether to include natural hazard risks (floods, landslides, storm surge) in the analysis">
+              Analysis Type:
+            </label>
             <button type="button" className={config === 'modelA' ? 'active' : ''} onClick={() => setConfig('modelA')}>
-              Model A Only
+              No Hazard
             </button>
             <button type="button" className={config === 'modelB' ? 'active' : ''} onClick={() => setConfig('modelB')}>
-              Model B Only
+              With Hazard
             </button>
             <button type="button" className={config === 'both' ? 'active' : ''} onClick={() => setConfig('both')}>
-              Comparison
+              Compare Both
             </button>
           </div>
         </div>
@@ -746,26 +817,54 @@ export default function App() {
                   type="text"
                   placeholder="Latitude (click map)"
                   value={searchLat}
-                  onChange={(e) => setSearchLat(e.target.value)}
+                  onChange={(e) => {
+                    // Check if there are existing results
+                    if (hasSearched && results.length > 0 && e.target.value !== searchLat) {
+                      // Show confirmation dialog
+                      setPendingSearchLocation({ 
+                        lat: parseFloat(e.target.value) || 0, 
+                        lon: parseFloat(searchLon) || 0,
+                        isManual: true,
+                        newLat: e.target.value,
+                        newLon: searchLon
+                      });
+                    } else {
+                      setSearchLat(e.target.value);
+                    }
+                  }}
                   className="input-equal"
                 />
                 <input
                   type="text"
                   placeholder="Longitude (click map)"
                   value={searchLon}
-                  onChange={(e) => setSearchLon(e.target.value)}
+                  onChange={(e) => {
+                    // Check if there are existing results
+                    if (hasSearched && results.length > 0 && e.target.value !== searchLon) {
+                      // Show confirmation dialog
+                      setPendingSearchLocation({ 
+                        lat: parseFloat(searchLat) || 0, 
+                        lon: parseFloat(e.target.value) || 0,
+                        isManual: true,
+                        newLat: searchLat,
+                        newLon: e.target.value
+                      });
+                    } else {
+                      setSearchLon(e.target.value);
+                    }
+                  }}
                   className="input-equal"
                 />
                 <input
                   type="number"
-                  step="0.1"
-                  min="0.1"
-                  max="50"
+                  step="100"
+                  min="100"
+                  max="90000"
                   value={searchRadius}
                   onChange={(e) => setSearchRadius(e.target.value)}
-                  placeholder="Radius (km)"
+                  placeholder="Radius (meters)"
                   className="input-equal"
-                  style={{ maxWidth: '150px' }}
+                  style={{ maxWidth: '180px' }}
                 />
               </>
             )}
@@ -830,42 +929,7 @@ export default function App() {
           />
           <MapClickHandler onMapClick={handleMapClick} />
 
-          {/* Talomo District Boundary */}
-          <Polygon
-            positions={talomoBoundary}
-            pathOptions={{
-              color: '#1a5276',
-              weight: 3,
-              opacity: 0.8,
-              fillColor: '#3498db',
-              fillOpacity: 0.1,
-              dashArray: '10, 10'
-            }}
-            interactive={false}
-          />
-
-          {/* Show all candidate sites only in recommendation mode after search */}
-          {mode === 'recommendation' && hasSearched && sites.map((site) => {
-            const classKey = config === 'modelA' ? 'class_A' : 'class_B';
-            return (
-              <CircleMarker
-                key={site.site_id}
-                center={[site.latitude, site.longitude]}
-                radius={3}
-                fillColor={getColor(site[classKey])}
-                color={getColor(site[classKey])}
-                fillOpacity={0.6}
-                opacity={0.6}
-              >
-                <Popup>
-                  <strong>{site.site_id}</strong>
-                  <br />Score A: {site.pred_score_A.toFixed(4)} ({site.class_A})
-                  <br />Score B: {site.pred_score_B.toFixed(4)} ({site.class_B})
-                  <br />Rank A: {site.rank_A} | Rank B: {site.rank_B}
-                </Popup>
-              </CircleMarker>
-            );
-          })}
+          {/* Talomo District Boundary - Removed until actual boundary data is available */}
 
           {/* Highlighted results in recommendation mode */}
           {mode === 'recommendation' && results.map((site) => (
@@ -877,26 +941,34 @@ export default function App() {
               color="#ff0000"
               fillOpacity={0.9}
               opacity={0.9}
+              eventHandlers={{
+                click: (e) => {
+                  // Stop propagation to prevent map click handler from firing
+                  L.DomEvent.stopPropagation(e);
+                  L.DomEvent.preventDefault(e);
+                }
+              }}
             >
               {/* Tooltip shows on hover with View Details button */}
               <Tooltip 
                 direction="top" 
-                offset={[0, -10]} 
+                offset={[0, -5]} 
                 opacity={0.95}
                 permanent={false}
                 interactive={true}
+                sticky={true}
               >
                 <div style={{ minWidth: '200px', fontSize: '12px' }}>
                   <strong style={{ fontSize: '14px' }}>{site.site_id}</strong>
                   <div style={{ marginTop: '6px' }}>
                     <div>📍 Rank: #{site.localRank}</div>
                     <div style={{ marginTop: '4px' }}>
-                      <strong>Model A:</strong> {site.pred_score_A.toFixed(4)}
+                      <strong>No Hazard:</strong> {site.pred_score_A.toFixed(4)}
                       <br />
                       <span style={{ color: getColor(site.class_A) }}>({site.class_A})</span>
                     </div>
                     <div style={{ marginTop: '4px' }}>
-                      <strong>Model B:</strong> {site.pred_score_B.toFixed(4)}
+                      <strong>With Hazard:</strong> {site.pred_score_B.toFixed(4)}
                       <br />
                       <span style={{ color: getColor(site.class_B) }}>({site.class_B})</span>
                     </div>
@@ -940,7 +1012,7 @@ export default function App() {
                 <strong>🎯 Search Center</strong>
                 <br />Lat: {parseFloat(searchLat).toFixed(6)}
                 <br />Lon: {parseFloat(searchLon).toFixed(6)}
-                {searchRadius && <><br />Radius: {searchRadius} km</>}
+                {searchRadius && <><br />Radius: {searchRadius} meters</>}
               </Popup>
             </CircleMarker>
           )}
@@ -970,7 +1042,7 @@ export default function App() {
         <div className="results">
           <h3>No Recommended Sites Found</h3>
           <p style={{ color: '#666', marginTop: '10px' }}>
-            No sites matching your criteria were found within {searchRadius}km of the selected location.
+            No sites matching your criteria were found within {searchRadius}m of the selected location.
           </p>
           <p style={{ color: '#666', marginTop: '10px' }}>
             Try:
@@ -985,7 +1057,7 @@ export default function App() {
 
       {mode === 'recommendation' && results.length > 0 && (
         <div className="results">
-          <h3>Recommended Sites ({results.length} within {searchRadius}km)</h3>
+          <h3>Recommended Sites ({results.length} within {searchRadius}m)</h3>
           <p style={{ fontSize: '0.9em', color: '#666', marginBottom: '10px' }}>
             Click on any site row to view detailed information
           </p>
@@ -994,40 +1066,113 @@ export default function App() {
               <tr>
                 <th>Rank</th>
                 <th>Site ID</th>
-                <th>Score A</th>
-                <th>Class A</th>
-                <th>Score B</th>
-                <th>Class B</th>
-                <th>Diff</th>
-                <th>Recommendation</th>
+                {config === 'modelA' && (
+                  <>
+                    <th title="Suitability score (0-1 scale). Higher is better - indicates more suitable location for health facility">
+                      Score
+                    </th>
+                    <th title="Overall suitability rating. Higher is better - High is most suitable">
+                      Suitability Level
+                    </th>
+                    <th title="Recommendation level (0-3). Higher is better - Level 3 is highly recommended">
+                      Recommendation
+                    </th>
+                  </>
+                )}
+                {config === 'modelB' && (
+                  <>
+                    <th title="Suitability score (0-1 scale). Higher is better - indicates more suitable location for health facility">
+                      Score
+                    </th>
+                    <th title="Overall suitability rating. Higher is better - High is most suitable">
+                      Suitability Level
+                    </th>
+                    <th title="Recommendation level (0-3). Higher is better - Level 3 is highly recommended">
+                      Recommendation
+                    </th>
+                  </>
+                )}
+                {config === 'both' && (
+                  <>
+                    <th title="Suitability score without hazards (0-1 scale). Higher is better">
+                      No Hazard Score
+                    </th>
+                    <th title="Overall suitability rating without hazards. Higher is better">
+                      No Hazard Level
+                    </th>
+                    <th title="Suitability score with hazards (0-1 scale). Higher is better">
+                      With Hazard Score
+                    </th>
+                    <th title="Overall suitability rating with hazards. Higher is better">
+                      With Hazard Level
+                    </th>
+                    <th title="Score difference (No Hazard - With Hazard). Positive means hazards reduce suitability. Closer to zero is better">
+                      Score Difference
+                    </th>
+                    <th title="Level difference (No Hazard - With Hazard). Positive means hazards reduce suitability level. Zero means no change">
+                      Level Difference
+                    </th>
+                    <th title="Rank difference (No Hazard - With Hazard). Positive means better rank without hazards. Closer to zero means consistent ranking">
+                      Rank Difference
+                    </th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody>
               {results.slice(0, 20).map((site) => {
-                const score = config === 'modelA' ? site.pred_score_A : site.pred_score_B;
-                const level = getRecommendationLevel(score);
+                // Use the appropriate recommendation level based on config
+                const levelA = site.rec_level_A;
+                const levelB = site.rec_level_B;
+                const displayLevel = config === 'modelA' ? levelA : (config === 'modelB' ? levelB : Math.max(levelA, levelB));
+                const displayLabel = config === 'modelA' ? site.rec_label_A : (config === 'modelB' ? site.rec_label_B : (levelA >= levelB ? site.rec_label_A : site.rec_label_B));
+                
                 return (
                   <tr 
                     key={site.site_id} 
                     style={{
-                      backgroundColor: selectedSite?.site_id === site.site_id ? '#e3f2fd' : (site.classChanged ? '#fff3cd' : 'transparent'),
+                      backgroundColor: selectedSite?.site_id === site.site_id ? '#e3f2fd' : (config === 'both' && site.classChanged ? '#fff3cd' : 'transparent'),
                       cursor: 'pointer'
                     }}
                     onClick={() => setSelectedSite(site)}
                   >
-                    <td>{site.localRank}</td>
+                    <td title="Local ranking within search results. Lower is better (1 = best site)">{site.localRank}</td>
                     <td><strong>{site.site_id}</strong></td>
-                    <td>{site.pred_score_A.toFixed(4)}</td>
-                    <td style={{ color: getColor(site.class_A) }}>{site.class_A}</td>
-                    <td>{site.pred_score_B.toFixed(4)}</td>
-                    <td style={{ color: getColor(site.class_B) }}>{site.class_B}</td>
-                    <td>{site.scoreDiff}</td>
-                    <td style={{ 
-                      color: getRecommendationColor(level),
-                      fontWeight: 'bold'
-                    }}>
-                      Level {level}: {getRecommendationText(level)}
-                    </td>
+                    {config === 'modelA' && (
+                      <>
+                        <td title="Neural network output: weighted combination of population, road access, and facility distance. Higher is better">{site.pred_score_A.toFixed(4)}</td>
+                        <td style={{ color: getColor(site.class_A) }} title="Classification based on score thresholds. Higher is better">{site.class_A}</td>
+                        <td style={{ 
+                          color: getRecommendationColor(levelA),
+                          fontWeight: 'bold'
+                        }} title="Level based on score: Highly Suitable (≥0.6), Moderately Suitable (≥0.4), Conditionally Suitable (≥0.2)">
+                          {site.rec_label_A}
+                        </td>
+                      </>
+                    )}
+                    {config === 'modelB' && (
+                      <>
+                        <td title="Neural network output: weighted combination of location factors + hazard penalties. Higher is better">{site.pred_score_B.toFixed(4)}</td>
+                        <td style={{ color: getColor(site.class_B) }} title="Classification based on score thresholds. Higher is better">{site.class_B}</td>
+                        <td style={{ 
+                          color: getRecommendationColor(levelB),
+                          fontWeight: 'bold'
+                        }} title="Level based on score: Highly Suitable (≥0.6), Moderately Suitable (≥0.4), Conditionally Suitable (≥0.2)">
+                          {site.rec_label_B}
+                        </td>
+                      </>
+                    )}
+                    {config === 'both' && (
+                      <>
+                        <td title="Neural network output: weighted combination of population, road access, and facility distance. Higher is better">{site.pred_score_A.toFixed(4)}</td>
+                        <td style={{ color: getColor(site.class_A) }} title="Classification based on score thresholds. Higher is better">{site.class_A}</td>
+                        <td title="Neural network output: weighted combination of location factors + hazard penalties. Higher is better">{site.pred_score_B.toFixed(4)}</td>
+                        <td style={{ color: getColor(site.class_B) }} title="Classification based on score thresholds. Higher is better">{site.class_B}</td>
+                        <td title="Score difference: No Hazard - With Hazard. Positive means hazards reduce suitability. Closer to zero is better">{site.scoreDiff}</td>
+                        <td title="Level difference: No Hazard - With Hazard. Positive means hazards reduce level. Zero means no change">{levelA - levelB}</td>
+                        <td title="Rank difference: No Hazard - With Hazard. Positive means better rank without hazards. Closer to zero means consistent ranking">{site.rank_A - site.rank_B}</td>
+                      </>
+                    )}
                   </tr>
                 );
               })}
@@ -1093,91 +1238,130 @@ export default function App() {
                       <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse' }}>
                         <tbody>
                           <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '8px 0', fontWeight: 'bold' }}>Latitude:</td>
-                            <td style={{ padding: '8px 0' }}>{selectedSite.latitude.toFixed(6)}</td>
+                            <td style={{ padding: '8px 0', fontWeight: 'bold' }} title="Geographic coordinate - north/south position">Latitude:</td>
+                            <td style={{ padding: '8px 0' }} title="Geographic coordinate - north/south position">{selectedSite.latitude.toFixed(6)}</td>
                           </tr>
                           <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '8px 0', fontWeight: 'bold' }}>Longitude:</td>
-                            <td style={{ padding: '8px 0' }}>{selectedSite.longitude.toFixed(6)}</td>
+                            <td style={{ padding: '8px 0', fontWeight: 'bold' }} title="Geographic coordinate - east/west position">Longitude:</td>
+                            <td style={{ padding: '8px 0' }} title="Geographic coordinate - east/west position">{selectedSite.longitude.toFixed(6)}</td>
                           </tr>
                           <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '8px 0', fontWeight: 'bold' }}>Local Rank:</td>
-                            <td style={{ padding: '8px 0' }}>#{selectedSite.localRank} of {results.length}</td>
+                            <td style={{ padding: '8px 0', fontWeight: 'bold' }} title="Ranking within your search results">Local Rank:</td>
+                            <td style={{ padding: '8px 0' }} title="Ranking within your search results">#{selectedSite.localRank} of {results.length}</td>
                           </tr>
                         </tbody>
                       </table>
 
-                      <h4 style={{ color: '#1a5276', marginTop: '20px', marginBottom: '12px', fontSize: '16px' }}>Spatial Factors</h4>
+                      <h4 style={{ color: '#1a5276', marginTop: '20px', marginBottom: '12px', fontSize: '16px' }} title="These factors describe the location's characteristics independent of natural hazards">
+                        Location Factors
+                      </h4>
                       <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse' }}>
                         <tbody>
                           <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '8px 0', fontWeight: 'bold' }}>Building Density:</td>
-                            <td style={{ padding: '8px 0' }}>{selectedSite.building_density_norm.toFixed(4)}</td>
+                            <td style={{ padding: '8px 0', fontWeight: 'bold' }} title="How many people live in this area - higher means more potential patients to serve">
+                              Population Density:
+                            </td>
+                            <td style={{ padding: '8px 0' }} title="Normalized building count per area: (building_count - min) / (max - min)">{selectedSite.building_density_norm.toFixed(4)}</td>
                           </tr>
                           <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '8px 0', fontWeight: 'bold' }}>Road Accessibility:</td>
-                            <td style={{ padding: '8px 0' }}>{selectedSite.road_accessibility_norm.toFixed(4)}</td>
+                            <td style={{ padding: '8px 0', fontWeight: 'bold' }} title="How easy it is to reach this location by road - higher means better accessibility">
+                              Road Access:
+                            </td>
+                            <td style={{ padding: '8px 0' }} title="Normalized proximity to roads: (distance_to_road - min) / (max - min), inverted so closer = higher">{selectedSite.road_accessibility_norm.toFixed(4)}</td>
                           </tr>
                           <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '8px 0', fontWeight: 'bold' }}>Facility Distance:</td>
-                            <td style={{ padding: '8px 0' }}>{selectedSite.facility_distance_norm.toFixed(4)}</td>
+                            <td style={{ padding: '8px 0', fontWeight: 'bold' }} title="How far this location is from the nearest healthcare facility - lower means closer to existing services">
+                              Distance to Existing Facility:
+                            </td>
+                            <td style={{ padding: '8px 0' }} title="Normalized distance to nearest facility: (distance - min) / (max - min)">{selectedSite.facility_distance_norm.toFixed(4)}</td>
                           </tr>
                         </tbody>
                       </table>
                     </div>
 
                     <div>
-                      <h4 style={{ color: '#1a5276', marginBottom: '12px', fontSize: '16px' }}>Suitability Assessment</h4>
+                      <h4 style={{ color: '#1a5276', marginBottom: '12px', fontSize: '16px' }} title="How suitable this location is for a health facility, with and without considering natural hazards">
+                        Suitability Assessment
+                      </h4>
                       <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse' }}>
                         <thead>
                           <tr style={{ backgroundColor: '#f8f9fa' }}>
                             <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #dee2e6' }}></th>
-                            <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #dee2e6' }}>Model A</th>
-                            <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #dee2e6' }}>Model B</th>
+                            <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #dee2e6' }} title="Analysis based only on location factors">
+                              No Hazard
+                            </th>
+                            <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #dee2e6' }} title="Analysis including natural hazard risks">
+                              With Hazard
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
                           <tr style={{ borderBottom: '1px solid #eee' }}>
                             <td style={{ padding: '10px', fontWeight: 'bold' }}>Score:</td>
-                            <td style={{ padding: '10px', fontSize: '16px', fontWeight: 'bold' }}>{selectedSite.pred_score_A.toFixed(4)}</td>
-                            <td style={{ padding: '10px', fontSize: '16px', fontWeight: 'bold' }}>{selectedSite.pred_score_B.toFixed(4)}</td>
+                            <td style={{ padding: '10px', fontSize: '16px', fontWeight: 'bold' }} title="Neural network output: weighted combination of population, road access, and facility distance">{selectedSite.pred_score_A.toFixed(4)}</td>
+                            <td style={{ padding: '10px', fontSize: '16px', fontWeight: 'bold' }} title="Neural network output: weighted combination of location factors + hazard penalties (flood, landslide, storm surge)">{selectedSite.pred_score_B.toFixed(4)}</td>
                           </tr>
                           <tr style={{ borderBottom: '1px solid #eee' }}>
                             <td style={{ padding: '10px', fontWeight: 'bold' }}>Class:</td>
-                            <td style={{ padding: '10px', color: getColor(selectedSite.class_A), fontWeight: 'bold' }}>{selectedSite.class_A}</td>
-                            <td style={{ padding: '10px', color: getColor(selectedSite.class_B), fontWeight: 'bold' }}>{selectedSite.class_B}</td>
+                            <td style={{ padding: '10px', color: getColor(selectedSite.class_A), fontWeight: 'bold' }} title="Classification based on score thresholds: High (≥0.60), Moderate (≥0.40), Low (≥0.25), Very Low (<0.25)">{selectedSite.class_A}</td>
+                            <td style={{ padding: '10px', color: getColor(selectedSite.class_B), fontWeight: 'bold' }} title="Classification based on score thresholds: High (≥0.60), Moderate (≥0.40), Low (≥0.25), Very Low (<0.25)">{selectedSite.class_B}</td>
                           </tr>
                           <tr style={{ borderBottom: '1px solid #eee' }}>
                             <td style={{ padding: '10px', fontWeight: 'bold' }}>Global Rank:</td>
-                            <td style={{ padding: '10px' }}>{selectedSite.rank_A} / {sites.length}</td>
-                            <td style={{ padding: '10px' }}>{selectedSite.rank_B} / {sites.length}</td>
+                            <td style={{ padding: '10px' }} title="Ranking among all {sites.length} analyzed sites, sorted by score (1 = highest)">{selectedSite.rank_A} / {sites.length}</td>
+                            <td style={{ padding: '10px' }} title="Ranking among all {sites.length} analyzed sites, sorted by score (1 = highest)">{selectedSite.rank_B} / {sites.length}</td>
                           </tr>
                           <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '10px', fontWeight: 'bold' }}>Recommendation:</td>
-                            <td style={{ padding: '10px', color: getRecommendationColor(getRecommendationLevel(selectedSite.pred_score_A)), fontWeight: 'bold' }}>
-                              Level {getRecommendationLevel(selectedSite.pred_score_A)}
+                            <td style={{ padding: '10px', fontWeight: 'bold' }} title="Overall recommendation level based on all factors">
+                              Recommendation:
                             </td>
-                            <td style={{ padding: '10px', color: getRecommendationColor(getRecommendationLevel(selectedSite.pred_score_B)), fontWeight: 'bold' }}>
-                              Level {getRecommendationLevel(selectedSite.pred_score_B)}
+                            <td style={{ padding: '10px', color: getRecommendationColor(selectedSite.rec_level_A), fontWeight: 'bold' }} title="Level based on score: Highly Suitable (≥0.6), Moderately Suitable (≥0.4), Conditionally Suitable (≥0.2), Not Suitable (<0.2)">
+                              {selectedSite.rec_label_A}
+                            </td>
+                            <td style={{ padding: '10px', color: getRecommendationColor(selectedSite.rec_level_B), fontWeight: 'bold' }} title="Level based on score: Highly Suitable (≥0.6), Moderately Suitable (≥0.4), Conditionally Suitable (≥0.2), Not Suitable (<0.2)">
+                              {selectedSite.rec_label_B}
                             </td>
                           </tr>
                         </tbody>
                       </table>
 
-                      <h4 style={{ color: '#1a5276', marginTop: '20px', marginBottom: '12px', fontSize: '16px' }}>Hazard Risk Factors</h4>
+                      <h4 style={{ color: '#1a5276', marginTop: '20px', marginBottom: '12px', fontSize: '16px' }} title="Risk levels for natural disasters that could affect this location - higher values mean greater risk">
+                        Natural Hazard Risks
+                      </h4>
                       <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse' }}>
                         <tbody>
                           <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '8px 0', fontWeight: 'bold' }}>Flood Risk:</td>
-                            <td style={{ padding: '8px 0' }}>{selectedSite.flood_norm.toFixed(4)}</td>
+                            <td style={{ padding: '8px 0', fontWeight: 'bold' }} title="Risk of flooding during heavy rains or typhoons">
+                              Flood Risk:
+                            </td>
+                            <td style={{ padding: '8px 0' }} title="Normalized flood susceptibility: (flood_level - min) / (max - min) from hazard maps">
+                              {selectedSite.flood_norm.toFixed(4)}
+                              <span style={{ marginLeft: '8px', color: selectedSite.flood_norm > 0.5 ? '#d73027' : '#1a9850' }}>
+                                ({selectedSite.flood_norm > 0.5 ? 'High' : 'Low'})
+                              </span>
+                            </td>
                           </tr>
                           <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '8px 0', fontWeight: 'bold' }}>Landslide Risk:</td>
-                            <td style={{ padding: '8px 0' }}>{selectedSite.landslide_norm.toFixed(4)}</td>
+                            <td style={{ padding: '8px 0', fontWeight: 'bold' }} title="Risk of landslides or soil movement, especially on slopes">
+                              Landslide Risk:
+                            </td>
+                            <td style={{ padding: '8px 0' }} title="Normalized landslide susceptibility: (landslide_level - min) / (max - min) from hazard maps">
+                              {selectedSite.landslide_norm.toFixed(4)}
+                              <span style={{ marginLeft: '8px', color: selectedSite.landslide_norm > 0.5 ? '#d73027' : '#1a9850' }}>
+                                ({selectedSite.landslide_norm > 0.5 ? 'High' : 'Low'})
+                              </span>
+                            </td>
                           </tr>
                           <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '8px 0', fontWeight: 'bold' }}>Storm Surge Risk:</td>
-                            <td style={{ padding: '8px 0' }}>{selectedSite.stormsurge_norm.toFixed(4)}</td>
+                            <td style={{ padding: '8px 0', fontWeight: 'bold' }} title="Risk of coastal flooding from typhoons and high tides">
+                              Storm Surge Risk:
+                            </td>
+                            <td style={{ padding: '8px 0' }} title="Normalized storm surge susceptibility: (surge_level - min) / (max - min) from hazard maps">
+                              {selectedSite.stormsurge_norm.toFixed(4)}
+                              <span style={{ marginLeft: '8px', color: selectedSite.stormsurge_norm > 0.5 ? '#d73027' : '#1a9850' }}>
+                                ({selectedSite.stormsurge_norm > 0.5 ? 'High' : 'Low'})
+                              </span>
+                            </td>
                           </tr>
                         </tbody>
                       </table>
@@ -1205,133 +1389,255 @@ export default function App() {
       )}
 
       {/* ── Evaluation Result ── */}
-      {mode === 'evaluation' && isEvaluating && (
-        <div className="results">
-          <h3>Evaluating location...</h3>
-          <p>Running suitability analysis...</p>
-        </div>
-      )}
-      
       {mode === 'evaluation' && evalResult && (
         <div className="results">
-          <h3>Location Suitability Evaluation</h3>
+          <h3 title="Assessment of how suitable this specific location is for a health facility">
+            Location Suitability Evaluation
+          </h3>
           <div className="eval-card">
             <h4>📍 Location: {evalResult.lat.toFixed(6)}, {evalResult.lon.toFixed(6)}</h4>
             
-            <h4>Suitability Scores</h4>
+            {evalResult.outsideCoverage && (
+              <div style={{ 
+                marginBottom: '15px', 
+                padding: '12px', 
+                backgroundColor: '#fff3cd', 
+                borderRadius: '6px',
+                borderLeft: '4px solid #ffc107'
+              }}>
+                ⚠️ <strong>Note:</strong> This location is {evalResult.distance.toFixed(2)}km from the nearest analyzed site. 
+                Results are based on the closest available data point.
+              </div>
+            )}
+            
+            <h4 title="Overall scores indicating how suitable this location is (0-1 scale, higher is better)">
+              Suitability Scores
+            </h4>
             <table>
               <thead>
                 <tr>
                   <th></th>
-                  <th>Model A (Service-Oriented)</th>
-                  <th>Model B (Resilience-Aware)</th>
+                  {config === 'modelA' && (
+                    <th title="Analysis based only on location factors like population, road access, and distance to facilities">
+                      No Hazard
+                    </th>
+                  )}
+                  {config === 'modelB' && (
+                    <th title="Analysis that includes natural hazard risks (floods, landslides, storm surge)">
+                      With Hazard
+                    </th>
+                  )}
+                  {config === 'both' && (
+                    <>
+                      <th title="Analysis based only on location factors like population, road access, and distance to facilities">
+                        No Hazard
+                      </th>
+                      <th title="Analysis that includes natural hazard risks (floods, landslides, storm surge)">
+                        With Hazard
+                      </th>
+                      <th title="Difference between No Hazard and With Hazard">
+                        Difference
+                      </th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 <tr>
                   <td><strong>Suitability Score</strong></td>
-                  <td style={{ fontSize: '1.2em', fontWeight: 'bold' }}>{evalResult.scoreA.toFixed(4)}</td>
-                  <td style={{ fontSize: '1.2em', fontWeight: 'bold' }}>{evalResult.scoreB.toFixed(4)}</td>
+                  {config === 'modelA' && (
+                    <td style={{ fontSize: '1.2em', fontWeight: 'bold' }} title="Neural network output: weighted combination of population, road access, and facility distance">{evalResult.scoreA.toFixed(4)}</td>
+                  )}
+                  {config === 'modelB' && (
+                    <td style={{ fontSize: '1.2em', fontWeight: 'bold' }} title="Neural network output: weighted combination of location factors + hazard penalties (flood, landslide, storm surge)">{evalResult.scoreB.toFixed(4)}</td>
+                  )}
+                  {config === 'both' && (
+                    <>
+                      <td style={{ fontSize: '1.2em', fontWeight: 'bold' }} title="Neural network output: weighted combination of population, road access, and facility distance">{evalResult.scoreA.toFixed(4)}</td>
+                      <td style={{ fontSize: '1.2em', fontWeight: 'bold' }} title="Neural network output: weighted combination of location factors + hazard penalties (flood, landslide, storm surge)">{evalResult.scoreB.toFixed(4)}</td>
+                      <td style={{ fontSize: '1.2em', fontWeight: 'bold' }} title="Score difference: No Hazard - With Hazard">{(evalResult.scoreA - evalResult.scoreB).toFixed(4)}</td>
+                    </>
+                  )}
                 </tr>
                 <tr>
-                  <td><strong>Classification</strong></td>
-                  <td style={{ color: getColor(evalResult.classA), fontWeight: 'bold' }}>{evalResult.classA}</td>
-                  <td style={{ color: getColor(evalResult.classB), fontWeight: 'bold' }}>{evalResult.classB}</td>
+                  <td title="Overall rating from Very Low to High">
+                    <strong>Suitability Level</strong>
+                  </td>
+                  {config === 'modelA' && (
+                    <td style={{ color: getColor(evalResult.classA), fontWeight: 'bold' }} title="Classification based on score thresholds: High (≥0.60), Moderate (≥0.40), Low (≥0.25), Very Low (<0.25)">{evalResult.classA}</td>
+                  )}
+                  {config === 'modelB' && (
+                    <td style={{ color: getColor(evalResult.classB), fontWeight: 'bold' }} title="Classification based on score thresholds: High (≥0.60), Moderate (≥0.40), Low (≥0.25), Very Low (<0.25)">{evalResult.classB}</td>
+                  )}
+                  {config === 'both' && (
+                    <>
+                      <td style={{ color: getColor(evalResult.classA), fontWeight: 'bold' }} title="Classification based on score thresholds: High (≥0.60), Moderate (≥0.40), Low (≥0.25), Very Low (<0.25)">{evalResult.classA}</td>
+                      <td style={{ color: getColor(evalResult.classB), fontWeight: 'bold' }} title="Classification based on score thresholds: High (≥0.60), Moderate (≥0.40), Low (≥0.25), Very Low (<0.25)">{evalResult.classB}</td>
+                      <td title="Level change when hazards are considered">{evalResult.classA !== evalResult.classB ? `${evalResult.classA} → ${evalResult.classB}` : 'No change'}</td>
+                    </>
+                  )}
                 </tr>
                 <tr>
-                  <td><strong>Recommendation</strong></td>
-                  <td style={{ 
-                    color: getRecommendationColor(evalResult.levelA), 
-                    fontWeight: 'bold',
-                    fontSize: '1.1em'
-                  }}>
-                    Level {evalResult.levelA}: {getRecommendationText(evalResult.levelA)}
+                  <td title="How this location ranks compared to all analyzed sites in Talomo">
+                    <strong>Overall Rank</strong>
                   </td>
-                  <td style={{ 
-                    color: getRecommendationColor(evalResult.levelB), 
-                    fontWeight: 'bold',
-                    fontSize: '1.1em'
-                  }}>
-                    Level {evalResult.levelB}: {getRecommendationText(evalResult.levelB)}
+                  {config === 'modelA' && (
+                    <td title="Ranking among all {sites.length} analyzed sites, sorted by score (1 = highest)">#{evalResult.rankA} of {sites.length}</td>
+                  )}
+                  {config === 'modelB' && (
+                    <td title="Ranking among all {sites.length} analyzed sites, sorted by score (1 = highest)">#{evalResult.rankB} of {sites.length}</td>
+                  )}
+                  {config === 'both' && (
+                    <>
+                      <td title="Ranking among all {sites.length} analyzed sites, sorted by score (1 = highest)">#{evalResult.rankA} of {sites.length}</td>
+                      <td title="Ranking among all {sites.length} analyzed sites, sorted by score (1 = highest)">#{evalResult.rankB} of {sites.length}</td>
+                      <td title="Rank difference: No Hazard - With Hazard">{evalResult.rankA - evalResult.rankB}</td>
+                    </>
+                  )}
+                </tr>
+                <tr>
+                  <td title="Level 3 = Highly recommended, Level 2 = Moderately suitable, Level 1 = Conditionally suitable">
+                    <strong>Recommendation</strong>
                   </td>
+                  {config === 'modelA' && (
+                    <td style={{ 
+                      color: getRecommendationColor(evalResult.levelA), 
+                      fontWeight: 'bold',
+                      fontSize: '1.1em'
+                    }} title="Level based on score: Highly Suitable (≥0.6), Moderately Suitable (≥0.4), Conditionally Suitable (≥0.2), Not Suitable (<0.2)">
+                      {evalResult.site.rec_label_A}
+                    </td>
+                  )}
+                  {config === 'modelB' && (
+                    <td style={{ 
+                      color: getRecommendationColor(evalResult.levelB), 
+                      fontWeight: 'bold',
+                      fontSize: '1.1em'
+                    }} title="Level based on score: Highly Suitable (≥0.6), Moderately Suitable (≥0.4), Conditionally Suitable (≥0.2), Not Suitable (<0.2)">
+                      {evalResult.site.rec_label_B}
+                    </td>
+                  )}
+                  {config === 'both' && (
+                    <>
+                      <td style={{ 
+                        color: getRecommendationColor(evalResult.levelA), 
+                        fontWeight: 'bold',
+                        fontSize: '1.1em'
+                      }} title="Level based on score: Highly Suitable (≥0.6), Moderately Suitable (≥0.4), Conditionally Suitable (≥0.2), Not Suitable (<0.2)">
+                        {evalResult.site.rec_label_A}
+                      </td>
+                      <td style={{ 
+                        color: getRecommendationColor(evalResult.levelB), 
+                        fontWeight: 'bold',
+                        fontSize: '1.1em'
+                      }} title="Level based on score: Highly Suitable (≥0.6), Moderately Suitable (≥0.4), Conditionally Suitable (≥0.2), Not Suitable (<0.2)">
+                        {evalResult.site.rec_label_B}
+                      </td>
+                      <td title="Recommendation level difference">{evalResult.levelA - evalResult.levelB}</td>
+                    </>
+                  )}
                 </tr>
               </tbody>
             </table>
 
-            {evalResult.classA !== evalResult.classB && (
+            {config === 'both' && evalResult.classA !== evalResult.classB && (
               <p className="warning" style={{ marginTop: '15px', padding: '10px', backgroundColor: '#fff3cd', borderRadius: '4px' }}>
-                ⚠️ Classification changes from <strong>{evalResult.classA}</strong> to{' '}
-                <strong>{evalResult.classB}</strong> when hazard factors are included.
+                ⚠️ <strong>Note:</strong> Suitability level changes from <strong>{evalResult.classA}</strong> to{' '}
+                <strong>{evalResult.classB}</strong> when natural hazards are considered.
               </p>
             )}
             
-            <h4 style={{ marginTop: '20px' }}>Spatial Factors (Normalized 0-1)</h4>
+            <h4 style={{ marginTop: '20px' }} title="Characteristics of this location that affect its suitability (values are normalized 0-1)">
+              Location Factors
+            </h4>
             <table>
               <thead>
                 <tr>
                   <th>Factor</th>
                   <th>Value</th>
-                  <th>Description</th>
+                  <th>What This Means</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td><strong>Building Density</strong></td>
-                  <td>{evalResult.factors.buildingDensity.toFixed(4)}</td>
-                  <td>Population density indicator</td>
+                  <td title="How many people live in this area">
+                    <strong>Population Density</strong>
+                  </td>
+                  <td title="Normalized building count per area: (building_count - min) / (max - min)">{evalResult.factors.buildingDensity.toFixed(4)}</td>
+                  <td>{evalResult.factors.buildingDensity > 0.5 ? 'High population - more people to serve' : 'Lower population - fewer potential patients'}</td>
                 </tr>
                 <tr>
-                  <td><strong>Road Accessibility</strong></td>
-                  <td>{evalResult.factors.roadAccessibility.toFixed(4)}</td>
-                  <td>Proximity to road network</td>
+                  <td title="How easy it is to reach this location by road">
+                    <strong>Road Access</strong>
+                  </td>
+                  <td title="Normalized proximity to roads: (distance_to_road - min) / (max - min), inverted so closer = higher">{evalResult.factors.roadAccessibility.toFixed(4)}</td>
+                  <td>{evalResult.factors.roadAccessibility > 0.5 ? 'Good road access - easy to reach' : 'Limited road access - may be harder to reach'}</td>
                 </tr>
                 <tr>
-                  <td><strong>Facility Distance</strong></td>
-                  <td>{evalResult.factors.facilityDistance.toFixed(4)}</td>
-                  <td>Distance to nearest healthcare facility</td>
+                  <td title="How far this is from the nearest healthcare facility">
+                    <strong>Distance to Existing Facility</strong>
+                  </td>
+                  <td title="Normalized distance to nearest facility: (distance - min) / (max - min)">{evalResult.factors.facilityDistance.toFixed(4)}</td>
+                  <td>{evalResult.factors.facilityDistance > 0.5 ? 'Far from existing facilities - may fill a gap' : 'Close to existing facilities - may have overlap'}</td>
                 </tr>
               </tbody>
             </table>
 
-            <h4 style={{ marginTop: '20px' }}>Hazard Risk Factors (Normalized 0-1)</h4>
+            <h4 style={{ marginTop: '20px' }} title="Risk levels for natural disasters that could affect this location (values are normalized 0-1)">
+              Natural Hazard Risks
+            </h4>
             <table>
               <thead>
                 <tr>
                   <th>Hazard Type</th>
+                  <th>Risk Value</th>
                   <th>Risk Level</th>
-                  <th>Classification</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td><strong>Flood Risk</strong></td>
-                  <td>{evalResult.factors.flood.toFixed(4)}</td>
-                  <td style={{ color: evalResult.factors.flood > 0.5 ? '#d73027' : '#1a9850' }}>
-                    {evalResult.factors.flood > 0.5 ? 'High' : 'Low'}
+                  <td title="Risk of flooding during heavy rains or typhoons">
+                    <strong>Flood Risk</strong>
+                  </td>
+                  <td title="Normalized flood susceptibility: (flood_level - min) / (max - min) from hazard maps">{evalResult.factors.flood.toFixed(4)}</td>
+                  <td style={{ color: evalResult.factors.flood > 0.5 ? '#d73027' : '#1a9850', fontWeight: 'bold' }}>
+                    {evalResult.factors.flood > 0.5 ? 'High Risk' : 'Low Risk'}
                   </td>
                 </tr>
                 <tr>
-                  <td><strong>Landslide Risk</strong></td>
-                  <td>{evalResult.factors.landslide.toFixed(4)}</td>
-                  <td style={{ color: evalResult.factors.landslide > 0.5 ? '#d73027' : '#1a9850' }}>
-                    {evalResult.factors.landslide > 0.5 ? 'High' : 'Low'}
+                  <td title="Risk of landslides or soil movement">
+                    <strong>Landslide Risk</strong>
+                  </td>
+                  <td title="Normalized landslide susceptibility: (landslide_level - min) / (max - min) from hazard maps">{evalResult.factors.landslide.toFixed(4)}</td>
+                  <td style={{ color: evalResult.factors.landslide > 0.5 ? '#d73027' : '#1a9850', fontWeight: 'bold' }}>
+                    {evalResult.factors.landslide > 0.5 ? 'High Risk' : 'Low Risk'}
                   </td>
                 </tr>
                 <tr>
-                  <td><strong>Storm Surge Risk</strong></td>
-                  <td>{evalResult.factors.stormsurge.toFixed(4)}</td>
-                  <td style={{ color: evalResult.factors.stormsurge > 0.5 ? '#d73027' : '#1a9850' }}>
-                    {evalResult.factors.stormsurge > 0.5 ? 'High' : 'Low'}
+                  <td title="Risk of coastal flooding from typhoons">
+                    <strong>Storm Surge Risk</strong>
+                  </td>
+                  <td title="Normalized storm surge susceptibility: (surge_level - min) / (max - min) from hazard maps">{evalResult.factors.stormsurge.toFixed(4)}</td>
+                  <td style={{ color: evalResult.factors.stormsurge > 0.5 ? '#d73027' : '#1a9850', fontWeight: 'bold' }}>
+                    {evalResult.factors.stormsurge > 0.5 ? 'High Risk' : 'Low Risk'}
                   </td>
                 </tr>
               </tbody>
             </table>
 
-            <p style={{ fontSize: '0.9em', color: '#666', marginTop: '15px', padding: '10px', backgroundColor: '#f0f0f0', borderRadius: '4px' }}>
-              ℹ️ <strong>Note:</strong> Factor values are currently using placeholder data for demonstration. 
-              In production, these would be extracted from actual GIS layers (population census, road networks, 
-              hazard maps, etc.) based on the selected coordinates.
-            </p>
+            <div style={{ 
+              fontSize: '0.9em', 
+              color: '#666', 
+              marginTop: '15px', 
+              padding: '12px', 
+              backgroundColor: '#e3f2fd', 
+              borderRadius: '6px',
+              borderLeft: '4px solid #2196f3'
+            }}>
+              ℹ️ <strong>About the data:</strong> All scores and factors shown here were pre-computed by the analysis model 
+              and are based on actual GIS data for Talomo District, including population census, road networks, 
+              existing healthcare facilities, and hazard maps.
+            </div>
           </div>
         </div>
       )}

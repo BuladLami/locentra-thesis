@@ -196,3 +196,29 @@ body {
   border-left: 4px solid #ffc107;
   font-size: 14px;
 }
+
+/* Keep tooltip visible when hovering over it */
+.leaflet-tooltip {
+  pointer-events: auto !important;
+}
+
+.leaflet-tooltip-top:before {
+  pointer-events: auto !important;
+}
+
+/* Add padding to tooltip to make it easier to hover */
+.leaflet-tooltip {
+  padding: 8px !important;
+}
+
+/* Add delay to native tooltips */
+[title] {
+  position: relative;
+  cursor: help;
+}
+
+/* Custom tooltip styling with delay - this creates a smoother experience */
+.tooltip-label {
+  cursor: help;
+  border-bottom: 1px dotted #666;
+}
