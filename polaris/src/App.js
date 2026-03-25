@@ -81,6 +81,26 @@ function getRecommendationText(level) {
   return texts[level] || 'Unknown';
 }
 
+// Generate address based on coordinates (approximate barangay)
+function generateAddress(lat, lon) {
+  // Approximate barangay mapping based on coordinate ranges in Talomo District
+  let barangay = 'Talomo';
+  
+  if (lat >= 7.08 && lon >= 125.55) {
+    barangay = 'Talomo Proper';
+  } else if (lat >= 7.07 && lat < 7.08 && lon >= 125.52) {
+    barangay = 'Ma-a';
+  } else if (lat < 7.05 && lon < 125.50) {
+    barangay = 'Bago Aplaya';
+  } else if (lat >= 7.05 && lat < 7.07 && lon < 125.52) {
+    barangay = 'Catalunan Grande';
+  } else if (lon >= 125.58) {
+    barangay = 'Matina Crossing';
+  }
+  
+  return barangay;
+}
+
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -130,6 +150,12 @@ export default function App() {
   // Selected site for detailed view
   const [selectedSite, setSelectedSite] = useState(null);
   
+  // Hovered site for glow effect
+  const [hoveredSite, setHoveredSite] = useState(null);
+  
+  // Fullscreen map mode
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  
   // Error messages
   const [recommendError, setRecommendError] = useState('');
   const [evalError, setEvalError] = useState('');
@@ -173,6 +199,11 @@ export default function App() {
 
     console.log(`Found ${nearby.length} sites within ${radiusMeters}m (${radiusKm}km)`);
 
+    // Apply 50-meter shoreline buffer - filter out sites too close to water
+    // Sites with very high storm surge risk (>0.85) are likely within 50m of shoreline
+    nearby = nearby.filter(s => s.stormsurge_norm < 0.85);
+    console.log(`After 50m shoreline buffer: ${nearby.length} sites`);
+
     // Apply optional filters only if they have values
     if (minPopulation && minPopulation !== '' && !isNaN(parseFloat(minPopulation))) {
       const minPop = parseFloat(minPopulation);
@@ -212,6 +243,8 @@ export default function App() {
       localRank: i + 1,
       classChanged: site.class_A !== site.class_B,
       scoreDiff: (site.pred_score_A - site.pred_score_B).toFixed(4),
+      // Generate full address with barangay approximation based on coordinates
+      address: generateAddress(site.latitude, site.longitude)
     }));
 
     console.log(`Final results: ${ranked.length} sites`);
@@ -387,8 +420,8 @@ export default function App() {
       return;
     }
     
-    if (isNaN(radiusMeters) || radiusMeters < 100 || radiusMeters > 90000) {
-      setRecommendError('Please enter a valid radius between 100 and 90,000 meters');
+    if (isNaN(radiusMeters) || radiusMeters < 100 || radiusMeters > 1000) {
+      setRecommendError('Please enter a valid radius between 100 and 1,000 meters');
       return;
     }
     
@@ -610,6 +643,30 @@ export default function App() {
             
             <button
               type="button"
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              style={{
+                padding: '10px 20px',
+                border: '2px solid rgba(255,255,255,0.5)',
+                borderRadius: '6px',
+                backgroundColor: 'rgba(255,255,255,0.1)',
+                color: 'white',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '600',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.2)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)';
+              }}
+            >
+              {isFullscreen ? '� Show Controls' : '🗺️ Fullscreen Map'}
+            </button>
+            
+            <button
+              type="button"
               onClick={handleExitMap}
               style={{
                 padding: '10px 20px',
@@ -761,28 +818,9 @@ export default function App() {
         </div>
       )}
 
-      <header className="header">
-        <p>Find the best locations for health facilities in Talomo District</p>
-      </header>
-
       {/* ── Controls ── */}
-      <div className="controls">
-        <div className="control-row">
-          <div className="control-group">
-            <label title="Choose whether to include natural hazard risks (floods, landslides, storm surge) in the analysis">
-              Analysis Type:
-            </label>
-            <button type="button" className={config === 'modelA' ? 'active' : ''} onClick={() => setConfig('modelA')}>
-              No Hazard
-            </button>
-            <button type="button" className={config === 'modelB' ? 'active' : ''} onClick={() => setConfig('modelB')}>
-              With Hazard
-            </button>
-            <button type="button" className={config === 'both' ? 'active' : ''} onClick={() => setConfig('both')}>
-              Compare Both
-            </button>
-          </div>
-        </div>
+      {!isFullscreen && (
+        <div className="controls">
 
         <div className="control-row">
           <div className="control-group-full">
@@ -859,7 +897,7 @@ export default function App() {
                   type="number"
                   step="100"
                   min="100"
-                  max="90000"
+                  max="1000"
                   value={searchRadius}
                   onChange={(e) => setSearchRadius(e.target.value)}
                   placeholder="Radius (meters)"
@@ -915,477 +953,314 @@ export default function App() {
           </div>
         )}
       </div>
-
-      {/* ── Map ── */}
-      <div className="map-container">
-        <MapContainer
-          center={[7.05, 125.55]}
-          zoom={13}
-          style={{ height: '500px', width: '100%' }}
-        >
-          <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution="&copy; OpenStreetMap contributors"
-          />
-          <MapClickHandler onMapClick={handleMapClick} />
-
-          {/* Talomo District Boundary - Removed until actual boundary data is available */}
-
-          {/* Highlighted results in recommendation mode */}
-          {mode === 'recommendation' && results.map((site) => (
-            <CircleMarker
-              key={`res-${site.site_id}`}
-              center={[site.latitude, site.longitude]}
-              radius={7}
-              fillColor="#ff0000"
-              color="#ff0000"
-              fillOpacity={0.9}
-              opacity={0.9}
-              eventHandlers={{
-                click: (e) => {
-                  // Stop propagation to prevent map click handler from firing
-                  L.DomEvent.stopPropagation(e);
-                  L.DomEvent.preventDefault(e);
-                }
-              }}
-            >
-              {/* Tooltip shows on hover with View Details button */}
-              <Tooltip 
-                direction="top" 
-                offset={[0, -5]} 
-                opacity={0.95}
-                permanent={false}
-                interactive={true}
-                sticky={true}
-              >
-                <div style={{ minWidth: '200px', fontSize: '12px' }}>
-                  <strong style={{ fontSize: '14px' }}>{site.site_id}</strong>
-                  <div style={{ marginTop: '6px' }}>
-                    <div>📍 Rank: #{site.localRank}</div>
-                    <div style={{ marginTop: '4px' }}>
-                      <strong>No Hazard:</strong> {site.pred_score_A.toFixed(4)}
-                      <br />
-                      <span style={{ color: getColor(site.class_A) }}>({site.class_A})</span>
-                    </div>
-                    <div style={{ marginTop: '4px' }}>
-                      <strong>With Hazard:</strong> {site.pred_score_B.toFixed(4)}
-                      <br />
-                      <span style={{ color: getColor(site.class_B) }}>({site.class_B})</span>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedSite(site);
-                    }}
-                    style={{
-                      marginTop: '10px',
-                      padding: '6px 12px',
-                      background: '#1a5276',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '13px',
-                      width: '100%'
-                    }}
-                  >
-                    📊 View Full Details
-                  </button>
-                </div>
-              </Tooltip>
-            </CircleMarker>
-          ))}
-
-          {/* Search center marker in recommendation mode */}
-          {mode === 'recommendation' && searchLat && searchLon && !isNaN(parseFloat(searchLat)) && !isNaN(parseFloat(searchLon)) && (
-            <CircleMarker
-              center={[parseFloat(searchLat), parseFloat(searchLon)]}
-              radius={10}
-              fillColor="#ff6b00"
-              color="#ffffff"
-              fillOpacity={0.8}
-              opacity={1}
-              weight={3}
-            >
-              <Popup>
-                <strong>🎯 Search Center</strong>
-                <br />Lat: {parseFloat(searchLat).toFixed(6)}
-                <br />Lon: {parseFloat(searchLon).toFixed(6)}
-                {searchRadius && <><br />Radius: {searchRadius} meters</>}
-              </Popup>
-            </CircleMarker>
-          )}
-
-          {/* Evaluation point marker */}
-          {mode === 'evaluation' && evalPoint && (
-            <CircleMarker
-              center={[evalPoint.lat, evalPoint.lon]}
-              radius={8}
-              fillColor="#0066ff"
-              color="#0066ff"
-              fillOpacity={0.8}
-              opacity={1}
-            >
-              <Popup>
-                <strong>Evaluation Point</strong>
-                <br />Lat: {evalPoint.lat.toFixed(6)}
-                <br />Lon: {evalPoint.lon.toFixed(6)}
-              </Popup>
-            </CircleMarker>
-          )}
-        </MapContainer>
-      </div>
-
-      {/* ── Recommendation Results ── */}
-      {mode === 'recommendation' && hasSearched && results.length === 0 && (
-        <div className="results">
-          <h3>No Recommended Sites Found</h3>
-          <p style={{ color: '#666', marginTop: '10px' }}>
-            No sites matching your criteria were found within {searchRadius}m of the selected location.
-          </p>
-          <p style={{ color: '#666', marginTop: '10px' }}>
-            Try:
-          </p>
-          <ul style={{ color: '#666', marginLeft: '20px' }}>
-            <li>Increasing the search radius</li>
-            <li>Removing or relaxing the optional filters</li>
-            <li>Selecting a different location on the map</li>
-          </ul>
-        </div>
       )}
 
-      {mode === 'recommendation' && results.length > 0 && (
-        <div className="results">
-          <h3>Recommended Sites ({results.length} within {searchRadius}m)</h3>
-          <p style={{ fontSize: '0.9em', color: '#666', marginBottom: '10px' }}>
-            Click on any site row to view detailed information
-          </p>
-          <table>
-            <thead>
-              <tr>
-                <th>Rank</th>
-                <th>Site ID</th>
-                {config === 'modelA' && (
-                  <>
-                    <th title="Suitability score (0-1 scale). Higher is better - indicates more suitable location for health facility">
-                      Score
-                    </th>
-                    <th title="Overall suitability rating. Higher is better - High is most suitable">
-                      Suitability Level
-                    </th>
-                    <th title="Recommendation level (0-3). Higher is better - Level 3 is highly recommended">
-                      Recommendation
-                    </th>
-                  </>
-                )}
-                {config === 'modelB' && (
-                  <>
-                    <th title="Suitability score (0-1 scale). Higher is better - indicates more suitable location for health facility">
-                      Score
-                    </th>
-                    <th title="Overall suitability rating. Higher is better - High is most suitable">
-                      Suitability Level
-                    </th>
-                    <th title="Recommendation level (0-3). Higher is better - Level 3 is highly recommended">
-                      Recommendation
-                    </th>
-                  </>
-                )}
-                {config === 'both' && (
-                  <>
-                    <th title="Suitability score without hazards (0-1 scale). Higher is better">
-                      No Hazard Score
-                    </th>
-                    <th title="Overall suitability rating without hazards. Higher is better">
-                      No Hazard Level
-                    </th>
-                    <th title="Suitability score with hazards (0-1 scale). Higher is better">
-                      With Hazard Score
-                    </th>
-                    <th title="Overall suitability rating with hazards. Higher is better">
-                      With Hazard Level
-                    </th>
-                    <th title="Score difference (No Hazard - With Hazard). Positive means hazards reduce suitability. Closer to zero is better">
-                      Score Difference
-                    </th>
-                    <th title="Level difference (No Hazard - With Hazard). Positive means hazards reduce suitability level. Zero means no change">
-                      Level Difference
-                    </th>
-                    <th title="Rank difference (No Hazard - With Hazard). Positive means better rank without hazards. Closer to zero means consistent ranking">
-                      Rank Difference
-                    </th>
-                  </>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {results.slice(0, 20).map((site) => {
-                // Use the appropriate recommendation level based on config
-                const levelA = site.rec_level_A;
-                const levelB = site.rec_level_B;
-                const displayLevel = config === 'modelA' ? levelA : (config === 'modelB' ? levelB : Math.max(levelA, levelB));
-                const displayLabel = config === 'modelA' ? site.rec_label_A : (config === 'modelB' ? site.rec_label_B : (levelA >= levelB ? site.rec_label_A : site.rec_label_B));
-                
-                return (
-                  <tr 
-                    key={site.site_id} 
-                    style={{
-                      backgroundColor: selectedSite?.site_id === site.site_id ? '#e3f2fd' : (config === 'both' && site.classChanged ? '#fff3cd' : 'transparent'),
-                      cursor: 'pointer'
-                    }}
-                    onClick={() => setSelectedSite(site)}
-                  >
-                    <td title="Local ranking within search results. Lower is better (1 = best site)">{site.localRank}</td>
-                    <td><strong>{site.site_id}</strong></td>
-                    {config === 'modelA' && (
-                      <>
-                        <td title="Neural network output: weighted combination of population, road access, and facility distance. Higher is better">{site.pred_score_A.toFixed(4)}</td>
-                        <td style={{ color: getColor(site.class_A) }} title="Classification based on score thresholds. Higher is better">{site.class_A}</td>
-                        <td style={{ 
-                          color: getRecommendationColor(levelA),
-                          fontWeight: 'bold'
-                        }} title="Level based on score: Highly Suitable (≥0.6), Moderately Suitable (≥0.4), Conditionally Suitable (≥0.2)">
-                          {site.rec_label_A}
-                        </td>
-                      </>
-                    )}
-                    {config === 'modelB' && (
-                      <>
-                        <td title="Neural network output: weighted combination of location factors + hazard penalties. Higher is better">{site.pred_score_B.toFixed(4)}</td>
-                        <td style={{ color: getColor(site.class_B) }} title="Classification based on score thresholds. Higher is better">{site.class_B}</td>
-                        <td style={{ 
-                          color: getRecommendationColor(levelB),
-                          fontWeight: 'bold'
-                        }} title="Level based on score: Highly Suitable (≥0.6), Moderately Suitable (≥0.4), Conditionally Suitable (≥0.2)">
-                          {site.rec_label_B}
-                        </td>
-                      </>
-                    )}
-                    {config === 'both' && (
-                      <>
-                        <td title="Neural network output: weighted combination of population, road access, and facility distance. Higher is better">{site.pred_score_A.toFixed(4)}</td>
-                        <td style={{ color: getColor(site.class_A) }} title="Classification based on score thresholds. Higher is better">{site.class_A}</td>
-                        <td title="Neural network output: weighted combination of location factors + hazard penalties. Higher is better">{site.pred_score_B.toFixed(4)}</td>
-                        <td style={{ color: getColor(site.class_B) }} title="Classification based on score thresholds. Higher is better">{site.class_B}</td>
-                        <td title="Score difference: No Hazard - With Hazard. Positive means hazards reduce suitability. Closer to zero is better">{site.scoreDiff}</td>
-                        <td title="Level difference: No Hazard - With Hazard. Positive means hazards reduce level. Zero means no change">{levelA - levelB}</td>
-                        <td title="Rank difference: No Hazard - With Hazard. Positive means better rank without hazards. Closer to zero means consistent ranking">{site.rank_A - site.rank_B}</td>
-                      </>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {/* ── Map with Floating Sidebar ── */}
+      <div className="map-wrapper">
+        <div className="map-container">
+          <MapContainer
+            center={[7.05, 125.55]}
+            zoom={13}
+            style={{ height: '100%', width: '100%' }}
+          >
+            <TileLayer
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution="&copy; OpenStreetMap contributors"
+            />
+            <MapClickHandler onMapClick={handleMapClick} />
 
-          {/* Selected Site Details */}
-          {selectedSite && (
-            <>
-              {/* Modal Overlay */}
-              <div 
-                style={{
-                  position: 'fixed',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                  zIndex: 9998,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-                onClick={() => setSelectedSite(null)}
-              >
-                {/* Modal Content */}
-                <div 
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    backgroundColor: 'white',
-                    borderRadius: '12px',
-                    padding: '24px',
-                    maxWidth: '900px',
-                    maxHeight: '85vh',
-                    overflow: 'auto',
-                    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3)',
-                    zIndex: 9999,
-                    margin: '20px'
+            {/* Highlighted results in recommendation mode */}
+            {mode === 'recommendation' && results.map((site) => {
+              const isHovered = hoveredSite === site.site_id;
+              const isSelected = selectedSite?.site_id === site.site_id;
+              
+              return (
+                <CircleMarker
+                  key={`res-${site.site_id}`}
+                  center={[site.latitude, site.longitude]}
+                  radius={isHovered || isSelected ? 14 : 8}
+                  fillColor={isSelected ? "#0066ff" : "#2196F3"}
+                  color={isSelected ? "#ffffff" : "#1976D2"}
+                  fillOpacity={0.9}
+                  opacity={1}
+                  weight={isHovered || isSelected ? 3 : 2}
+                  className={isHovered ? 'marker-glow' : ''}
+                  eventHandlers={{
+                    click: (e) => {
+                      L.DomEvent.stopPropagation(e);
+                      L.DomEvent.preventDefault(e);
+                      setSelectedSite(site);
+                    },
+                    mouseover: () => {
+                      setHoveredSite(site.site_id);
+                    },
+                    mouseout: () => {
+                      setHoveredSite(null);
+                    }
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                    <h3 style={{ color: '#1a5276', margin: 0, fontSize: '22px' }}>📍 Site Details: {selectedSite.site_id}</h3>
-                    <button 
-                      onClick={() => setSelectedSite(null)}
-                      style={{
-                        padding: '8px 16px',
-                        border: 'none',
-                        borderRadius: '6px',
-                        background: '#dc3545',
-                        color: 'white',
-                        cursor: 'pointer',
-                        fontSize: '14px',
-                        fontWeight: '600'
-                      }}
+                  <Tooltip permanent={false} direction="top" offset={[0, -10]}>
+                    <div style={{ textAlign: 'center' }}>
+                      <strong>{site.site_id}</strong>
+                      <br />
+                      <span style={{ fontSize: '12px' }}>{site.address}</span>
+                      <br />
+                      <span style={{ fontSize: '11px', color: '#666' }}>
+                        Rank #{site.localRank}
+                      </span>
+                    </div>
+                  </Tooltip>
+                  <Popup>
+                    <strong>{site.site_id}</strong>
+                    <br />{site.address}
+                  </Popup>
+                </CircleMarker>
+              );
+            })}
+
+            {/* Search center marker */}
+            {mode === 'recommendation' && searchLat && searchLon && !isNaN(parseFloat(searchLat)) && !isNaN(parseFloat(searchLon)) && (
+              <CircleMarker
+                center={[parseFloat(searchLat), parseFloat(searchLon)]}
+                radius={10}
+                fillColor="#ff6b00"
+                color="#ffffff"
+                fillOpacity={0.8}
+                opacity={1}
+                weight={3}
+              >
+                <Popup>
+                  <strong>🎯 Search Center</strong>
+                  <br />Lat: {parseFloat(searchLat).toFixed(6)}
+                  <br />Lon: {parseFloat(searchLon).toFixed(6)}
+                  {searchRadius && <><br />Radius: {searchRadius} meters</>}
+                </Popup>
+              </CircleMarker>
+            )}
+
+            {/* Evaluation point marker */}
+            {mode === 'evaluation' && evalPoint && (
+              <CircleMarker
+                center={[evalPoint.lat, evalPoint.lon]}
+                radius={8}
+                fillColor="#0066ff"
+                color="#0066ff"
+                fillOpacity={0.8}
+                opacity={1}
+              >
+                <Popup>
+                  <strong>Evaluation Point</strong>
+                  <br />Lat: {evalPoint.lat.toFixed(6)}
+                  <br />Lon: {evalPoint.lon.toFixed(6)}
+                </Popup>
+              </CircleMarker>
+            )}
+          </MapContainer>
+        </div>
+
+        {/* Floating Sidebar for Recommendation Results */}
+        {mode === 'recommendation' && hasSearched && !isFullscreen && (
+          <div className="sidebar">
+            <div className="sidebar-content">
+              <h3 style={{ color: '#0891b2', marginBottom: '8px', fontSize: '18px' }}>
+                Recommended Sites ({results.length})
+              </h3>
+              {results.length === 0 ? (
+                <p style={{ color: '#666', fontSize: '14px' }}>
+                  No sites found within {searchRadius}m. Try increasing the radius or adjusting filters.
+                </p>
+              ) : (
+                <div className="site-list">
+                  {results.map((site) => (
+                    <div
+                      key={site.site_id}
+                      className={`site-item ${selectedSite?.site_id === site.site_id ? 'selected' : ''}`}
+                      onMouseEnter={() => setHoveredSite(site.site_id)}
+                      onMouseLeave={() => setHoveredSite(null)}
+                      onClick={() => setSelectedSite(site)}
                     >
-                      ✕ Close
-                    </button>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-                    <div>
-                      <h4 style={{ color: '#1a5276', marginBottom: '12px', fontSize: '16px' }}>Location Information</h4>
-                      <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse' }}>
-                        <tbody>
-                          <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '8px 0', fontWeight: 'bold' }} title="Geographic coordinate - north/south position">Latitude:</td>
-                            <td style={{ padding: '8px 0' }} title="Geographic coordinate - north/south position">{selectedSite.latitude.toFixed(6)}</td>
-                          </tr>
-                          <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '8px 0', fontWeight: 'bold' }} title="Geographic coordinate - east/west position">Longitude:</td>
-                            <td style={{ padding: '8px 0' }} title="Geographic coordinate - east/west position">{selectedSite.longitude.toFixed(6)}</td>
-                          </tr>
-                          <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '8px 0', fontWeight: 'bold' }} title="Ranking within your search results">Local Rank:</td>
-                            <td style={{ padding: '8px 0' }} title="Ranking within your search results">#{selectedSite.localRank} of {results.length}</td>
-                          </tr>
-                        </tbody>
-                      </table>
-
-                      <h4 style={{ color: '#1a5276', marginTop: '20px', marginBottom: '12px', fontSize: '16px' }} title="These factors describe the location's characteristics independent of natural hazards">
-                        Location Factors
-                      </h4>
-                      <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse' }}>
-                        <tbody>
-                          <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '8px 0', fontWeight: 'bold' }} title="How many people live in this area - higher means more potential patients to serve">
-                              Population Density:
-                            </td>
-                            <td style={{ padding: '8px 0' }} title="Normalized building count per area: (building_count - min) / (max - min)">{selectedSite.building_density_norm.toFixed(4)}</td>
-                          </tr>
-                          <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '8px 0', fontWeight: 'bold' }} title="How easy it is to reach this location by road - higher means better accessibility">
-                              Road Access:
-                            </td>
-                            <td style={{ padding: '8px 0' }} title="Normalized proximity to roads: (distance_to_road - min) / (max - min), inverted so closer = higher">{selectedSite.road_accessibility_norm.toFixed(4)}</td>
-                          </tr>
-                          <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '8px 0', fontWeight: 'bold' }} title="How far this location is from the nearest healthcare facility - lower means closer to existing services">
-                              Distance to Existing Facility:
-                            </td>
-                            <td style={{ padding: '8px 0' }} title="Normalized distance to nearest facility: (distance - min) / (max - min)">{selectedSite.facility_distance_norm.toFixed(4)}</td>
-                          </tr>
-                        </tbody>
-                      </table>
+                      <div className="site-item-name">
+                        #{site.localRank} - {site.site_id}
+                      </div>
+                      <div className="site-item-address">
+                        {site.address}
+                      </div>
                     </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
-                    <div>
-                      <h4 style={{ color: '#1a5276', marginBottom: '12px', fontSize: '16px' }} title="How suitable this location is for a health facility, with and without considering natural hazards">
-                        Suitability Assessment
-                      </h4>
-                      <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse' }}>
-                        <thead>
-                          <tr style={{ backgroundColor: '#f8f9fa' }}>
-                            <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #dee2e6' }}></th>
-                            <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #dee2e6' }} title="Analysis based only on location factors">
-                              No Hazard
-                            </th>
-                            <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #dee2e6' }} title="Analysis including natural hazard risks">
-                              With Hazard
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '10px', fontWeight: 'bold' }}>Score:</td>
-                            <td style={{ padding: '10px', fontSize: '16px', fontWeight: 'bold' }} title="Neural network output: weighted combination of population, road access, and facility distance">{selectedSite.pred_score_A.toFixed(4)}</td>
-                            <td style={{ padding: '10px', fontSize: '16px', fontWeight: 'bold' }} title="Neural network output: weighted combination of location factors + hazard penalties (flood, landslide, storm surge)">{selectedSite.pred_score_B.toFixed(4)}</td>
-                          </tr>
-                          <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '10px', fontWeight: 'bold' }}>Class:</td>
-                            <td style={{ padding: '10px', color: getColor(selectedSite.class_A), fontWeight: 'bold' }} title="Classification based on score thresholds: High (≥0.60), Moderate (≥0.40), Low (≥0.25), Very Low (<0.25)">{selectedSite.class_A}</td>
-                            <td style={{ padding: '10px', color: getColor(selectedSite.class_B), fontWeight: 'bold' }} title="Classification based on score thresholds: High (≥0.60), Moderate (≥0.40), Low (≥0.25), Very Low (<0.25)">{selectedSite.class_B}</td>
-                          </tr>
-                          <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '10px', fontWeight: 'bold' }}>Global Rank:</td>
-                            <td style={{ padding: '10px' }} title="Ranking among all {sites.length} analyzed sites, sorted by score (1 = highest)">{selectedSite.rank_A} / {sites.length}</td>
-                            <td style={{ padding: '10px' }} title="Ranking among all {sites.length} analyzed sites, sorted by score (1 = highest)">{selectedSite.rank_B} / {sites.length}</td>
-                          </tr>
-                          <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '10px', fontWeight: 'bold' }} title="Overall recommendation level based on all factors">
-                              Recommendation:
-                            </td>
-                            <td style={{ padding: '10px', color: getRecommendationColor(selectedSite.rec_level_A), fontWeight: 'bold' }} title="Level based on score: Highly Suitable (≥0.6), Moderately Suitable (≥0.4), Conditionally Suitable (≥0.2), Not Suitable (<0.2)">
-                              {selectedSite.rec_label_A}
-                            </td>
-                            <td style={{ padding: '10px', color: getRecommendationColor(selectedSite.rec_level_B), fontWeight: 'bold' }} title="Level based on score: Highly Suitable (≥0.6), Moderately Suitable (≥0.4), Conditionally Suitable (≥0.2), Not Suitable (<0.2)">
-                              {selectedSite.rec_label_B}
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
+      {/* ── Site Details Modal ── */}
+      {selectedSite && mode === 'recommendation' && (
+        <>
+          {/* Modal Overlay */}
+          <div 
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              zIndex: 9998,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+            onClick={() => setSelectedSite(null)}
+          >
+            {/* Modal Content */}
+            <div 
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                backgroundColor: 'white',
+                borderRadius: '12px',
+                padding: '24px',
+                maxWidth: '900px',
+                maxHeight: '85vh',
+                overflow: 'auto',
+                boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3)',
+                zIndex: 9999,
+                margin: '20px'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h3 style={{ color: '#1a5276', margin: 0, fontSize: '22px' }}>📍 Site Details: {selectedSite.site_id}</h3>
+                <button 
+                  onClick={() => setSelectedSite(null)}
+                  style={{
+                    padding: '8px 16px',
+                    border: 'none',
+                    borderRadius: '6px',
+                    background: '#dc3545',
+                    color: 'white',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: '600'
+                  }}
+                >
+                  ✕ Close
+                </button>
+              </div>
 
-                      <h4 style={{ color: '#1a5276', marginTop: '20px', marginBottom: '12px', fontSize: '16px' }} title="Risk levels for natural disasters that could affect this location - higher values mean greater risk">
-                        Natural Hazard Risks
-                      </h4>
-                      <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse' }}>
-                        <tbody>
-                          <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '8px 0', fontWeight: 'bold' }} title="Risk of flooding during heavy rains or typhoons">
-                              Flood Risk:
-                            </td>
-                            <td style={{ padding: '8px 0' }} title="Normalized flood susceptibility: (flood_level - min) / (max - min) from hazard maps">
-                              {selectedSite.flood_norm.toFixed(4)}
-                              <span style={{ marginLeft: '8px', color: selectedSite.flood_norm > 0.5 ? '#d73027' : '#1a9850' }}>
-                                ({selectedSite.flood_norm > 0.5 ? 'High' : 'Low'})
-                              </span>
-                            </td>
-                          </tr>
-                          <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '8px 0', fontWeight: 'bold' }} title="Risk of landslides or soil movement, especially on slopes">
-                              Landslide Risk:
-                            </td>
-                            <td style={{ padding: '8px 0' }} title="Normalized landslide susceptibility: (landslide_level - min) / (max - min) from hazard maps">
-                              {selectedSite.landslide_norm.toFixed(4)}
-                              <span style={{ marginLeft: '8px', color: selectedSite.landslide_norm > 0.5 ? '#d73027' : '#1a9850' }}>
-                                ({selectedSite.landslide_norm > 0.5 ? 'High' : 'Low'})
-                              </span>
-                            </td>
-                          </tr>
-                          <tr style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '8px 0', fontWeight: 'bold' }} title="Risk of coastal flooding from typhoons and high tides">
-                              Storm Surge Risk:
-                            </td>
-                            <td style={{ padding: '8px 0' }} title="Normalized storm surge susceptibility: (surge_level - min) / (max - min) from hazard maps">
-                              {selectedSite.stormsurge_norm.toFixed(4)}
-                              <span style={{ marginLeft: '8px', color: selectedSite.stormsurge_norm > 0.5 ? '#d73027' : '#1a9850' }}>
-                                ({selectedSite.stormsurge_norm > 0.5 ? 'High' : 'Low'})
-                              </span>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+              <div style={{ marginBottom: '20px' }}>
+                <p style={{ fontSize: '14px', color: '#666', marginBottom: '8px' }}>
+                  <strong>Address:</strong> {selectedSite.address}
+                </p>
+                <p style={{ fontSize: '14px', color: '#666', marginBottom: '8px' }}>
+                  <strong>Coordinates:</strong> {selectedSite.latitude.toFixed(6)}, {selectedSite.longitude.toFixed(6)}
+                </p>
+                <p style={{ fontSize: '14px', color: '#666' }}>
+                  <strong>Local Rank:</strong> <span title="Your ranking within search results - lower is better (1 = best site in your search area)">#{selectedSite.localRank} of {results.length}</span>
+                </p>
+              </div>
 
-                  {selectedSite.class_A !== selectedSite.class_B && (
-                    <div style={{ 
-                      marginTop: '20px', 
-                      padding: '14px', 
-                      backgroundColor: '#fff3cd', 
-                      borderRadius: '6px',
-                      borderLeft: '4px solid #ffc107',
-                      fontSize: '14px'
-                    }}>
-                      ⚠️ <strong>Note:</strong> Classification changes from <strong>{selectedSite.class_A}</strong> to{' '}
-                      <strong>{selectedSite.class_B}</strong> when hazard factors are included.
-                    </div>
-                  )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                <div>
+                  <h4 style={{ color: '#1a5276', marginBottom: '12px', fontSize: '16px' }}>
+                    Location Factors
+                  </h4>
+                  <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse' }}>
+                    <tbody>
+                      <tr style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '8px 0', fontWeight: 'bold' }}>Population Density:</td>
+                        <td style={{ padding: '8px 0' }} title="How many people live nearby - higher means more potential patients to serve (0-1 scale)">{selectedSite.building_density_norm.toFixed(4)}</td>
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '8px 0', fontWeight: 'bold' }}>Road Access:</td>
+                        <td style={{ padding: '8px 0' }} title="How easy to reach by road - higher means better accessibility for ambulances and patients (0-1 scale)">{selectedSite.road_accessibility_norm.toFixed(4)}</td>
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '8px 0', fontWeight: 'bold' }}>Facility Distance:</td>
+                        <td style={{ padding: '8px 0' }} title="Distance to nearest health facility - lower means closer to existing services, may indicate overlap (0-1 scale)">{selectedSite.facility_distance_norm.toFixed(4)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div>
+                  <h4 style={{ color: '#1a5276', marginBottom: '12px', fontSize: '16px' }}>
+                    Suitability Comparison
+                  </h4>
+                  <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#f8f9fa' }}>
+                        <th style={{ padding: '8px', textAlign: 'left', borderBottom: '2px solid #dee2e6' }}></th>
+                        <th style={{ padding: '8px', textAlign: 'left', borderBottom: '2px solid #dee2e6' }} title="Analysis based only on location factors">No Hazard</th>
+                        <th style={{ padding: '8px', textAlign: 'left', borderBottom: '2px solid #dee2e6' }} title="Analysis including natural disaster risks">With Hazard</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '8px', fontWeight: 'bold' }}>Score:</td>
+                        <td style={{ padding: '8px', fontSize: '15px', fontWeight: 'bold' }} title="Overall suitability score (0-1) - higher is better, considers population, roads, and facilities">{selectedSite.pred_score_A.toFixed(4)}</td>
+                        <td style={{ padding: '8px', fontSize: '15px', fontWeight: 'bold' }} title="Overall suitability score (0-1) - higher is better, includes penalties for flood, landslide, and storm surge risks">{selectedSite.pred_score_B.toFixed(4)}</td>
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '8px', fontWeight: 'bold' }}>Class:</td>
+                        <td style={{ padding: '8px', color: getColor(selectedSite.class_A), fontWeight: 'bold' }} title="Suitability rating: High (best), Moderate, Low, or Very Low">{selectedSite.class_A}</td>
+                        <td style={{ padding: '8px', color: getColor(selectedSite.class_B), fontWeight: 'bold' }} title="Suitability rating: High (best), Moderate, Low, or Very Low">{selectedSite.class_B}</td>
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '8px', fontWeight: 'bold' }}>Global Rank:</td>
+                        <td style={{ padding: '8px' }} title="Ranking among all {sites.length} sites in Talomo District - lower number is better (1 = best)">{selectedSite.rank_A} / {sites.length}</td>
+                        <td style={{ padding: '8px' }} title="Ranking among all {sites.length} sites in Talomo District - lower number is better (1 = best)">{selectedSite.rank_B} / {sites.length}</td>
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '8px', fontWeight: 'bold' }}>Recommendation:</td>
+                        <td style={{ padding: '8px', color: getRecommendationColor(selectedSite.rec_level_A), fontWeight: 'bold' }} title="Overall recommendation: Highly Suitable (best), Moderately Suitable, Conditionally Suitable, or Not Suitable">
+                          {selectedSite.rec_label_A}
+                        </td>
+                        <td style={{ padding: '8px', color: getRecommendationColor(selectedSite.rec_level_B), fontWeight: 'bold' }} title="Overall recommendation: Highly Suitable (best), Moderately Suitable, Conditionally Suitable, or Not Suitable">
+                          {selectedSite.rec_label_B}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  <h4 style={{ color: '#1a5276', marginTop: '20px', marginBottom: '12px', fontSize: '16px' }}>
+                    Natural Hazard Risks
+                  </h4>
+                  <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse' }}>
+                    <tbody>
+                      <tr style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '8px 0', fontWeight: 'bold' }}>Flood Risk:</td>
+                        <td style={{ padding: '8px 0' }} title="Risk of flooding during heavy rains or typhoons - higher values mean greater risk (0-1 scale)">
+                          {selectedSite.flood_norm.toFixed(4)}
+                          <span style={{ marginLeft: '8px', color: selectedSite.flood_norm > 0.5 ? '#d73027' : '#1a9850' }}>
+                            ({selectedSite.flood_norm > 0.5 ? 'High' : 'Low'})
+                          </span>
+                        </td>
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '8px 0', fontWeight: 'bold' }}>Landslide Risk:</td>
+                        <td style={{ padding: '8px 0' }} title="Risk of landslides or soil movement, especially on slopes - higher values mean greater risk (0-1 scale)">
+                          {selectedSite.landslide_norm.toFixed(4)}
+                          <span style={{ marginLeft: '8px', color: selectedSite.landslide_norm > 0.5 ? '#d73027' : '#1a9850' }}>
+                            ({selectedSite.landslide_norm > 0.5 ? 'High' : 'Low'})
+                          </span>
+                        </td>
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '8px 0', fontWeight: 'bold' }}>Storm Surge Risk:</td>
+                        <td style={{ padding: '8px 0' }} title="Risk of coastal flooding from typhoons and high tides - higher values mean greater risk (0-1 scale)">
+                          {selectedSite.stormsurge_norm.toFixed(4)}
+                          <span style={{ marginLeft: '8px', color: selectedSite.stormsurge_norm > 0.5 ? '#d73027' : '#1a9850' }}>
+                            ({selectedSite.stormsurge_norm > 0.5 ? 'High' : 'Low'})
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
-            </>
-          )}
-        </div>
+            </div>
+          </div>
+        </>
       )}
 
       {/* ── Evaluation Result ── */}

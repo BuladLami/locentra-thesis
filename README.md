@@ -1,1 +1,1 @@
-# locentra-thesis
+# polaris
