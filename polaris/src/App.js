@@ -194,9 +194,8 @@ export default function App() {
   // Map reference for zooming
   const [mapRef, setMapRef] = useState(null);
   
-  // Address input ref for dropdown positioning
+  // Address input ref
   const addressInputRef = React.useRef(null);
-  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
 
   // ── Load data on mount ──
   useEffect(() => {
@@ -401,7 +400,6 @@ export default function App() {
       });
       
       setAddressSuggestions(barangaySites);
-      updateDropdownPosition();
       setShowAddressSuggestions(true);
       return;
     }
@@ -428,18 +426,7 @@ export default function App() {
     });
     
     setAddressSuggestions(barangaySites);
-    updateDropdownPosition();
     setShowAddressSuggestions(barangaySites.length > 0);
-  }
-  
-  function updateDropdownPosition() {
-    if (addressInputRef.current) {
-      const rect = addressInputRef.current.getBoundingClientRect();
-      setDropdownPosition({
-        top: rect.bottom,
-        left: rect.left
-      });
-    }
   }
   
   function selectAddress(site) {
@@ -968,8 +955,7 @@ export default function App() {
                 value={addressQuery}
                 onChange={(e) => handleAddressSearch(e.target.value)}
                 onFocus={() => {
-                  // Update dropdown position and show all barangays when focused
-                  updateDropdownPosition();
+                  // Show all barangays when focused
                   if (addressQuery.length === 0) {
                     handleAddressSearch('');
                   } else if (addressSuggestions.length > 0) {
@@ -983,13 +969,7 @@ export default function App() {
                 className="address-input"
               />
               {showAddressSuggestions && addressSuggestions.length > 0 && (
-                <div 
-                  className="address-suggestions"
-                  style={{
-                    top: `${dropdownPosition.top}px`,
-                    left: `${dropdownPosition.left}px`
-                  }}
-                >
+                <div className="address-suggestions">
                   {addressSuggestions.map((site) => (
                     <div
                       key={site.site_id}

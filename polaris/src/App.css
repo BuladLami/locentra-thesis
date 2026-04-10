@@ -182,7 +182,7 @@ body {
   backdrop-filter: blur(10px);
   overflow: visible;
   position: relative;
-  z-index: 100;
+  z-index: 1100;
 }
 
 .control-row {
@@ -467,17 +467,19 @@ body {
 }
 
 .address-suggestions {
-  position: fixed;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
   background: white;
   border: 2px solid #667eea;
   border-top: none;
   border-radius: 0 0 8px 8px;
-  max-height: 266px;
   overflow-y: auto;
   overflow-x: hidden;
   z-index: 10000;
   box-shadow: 0 8px 20px rgba(0,0,0,0.25);
-  width: 250px;
+  width: 100%;
 }
 
 /* Scrollbar styling for address suggestions */
@@ -536,7 +538,7 @@ body {
   content: '▼';
   position: absolute;
   right: 12px;
-  top: 50%;
+  top: 19px;
   transform: translateY(-50%);
   pointer-events: none;
   color: #a0aec0;
@@ -590,24 +592,6 @@ body {
   letter-spacing: 0.5px;
 }
 
-/* Improved scrollbar for address suggestions */
-.address-suggestions::-webkit-scrollbar {
-  width: 8px;
-}
-
-.address-suggestions::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 0 0 8px 0;
-}
-
-.address-suggestions::-webkit-scrollbar-thumb {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 10px;
-}
-
-.address-suggestions::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
-}
 
 /* Loading spinner for address search */
 .address-loading {
