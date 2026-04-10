@@ -88,14 +88,16 @@ function generateAddress(lat, lon) {
   
   if (lat >= 7.08 && lon >= 125.55) {
     barangay = 'Talomo Proper';
-  } else if (lat >= 7.07 && lat < 7.08 && lon >= 125.52) {
+  } else if (lat >= 7.07 && lat < 7.08 && lon >= 125.52 && lon < 125.55) {
     barangay = 'Ma-a';
   } else if (lat < 7.05 && lon < 125.50) {
     barangay = 'Bago Aplaya';
   } else if (lat >= 7.05 && lat < 7.07 && lon < 125.52) {
     barangay = 'Catalunan Grande';
-  } else if (lon >= 125.58) {
+  } else if (lat >= 7.06 && lon >= 125.58) {
     barangay = 'Matina Crossing';
+  } else if (lat >= 7.06 && lon >= 125.54 && lon < 125.58) {
+    barangay = 'Matina';
   }
   
   return barangay;
@@ -121,6 +123,17 @@ function MapClickHandler({ onMapClick }) {
       onMapClick(e.latlng.lat, e.latlng.lng);
     },
   });
+  return null;
+}
+
+// ── Map reference handler ──
+function MapRefHandler({ setMapRef }) {
+  const map = useMapEvents({});
+  
+  useEffect(() => {
+    setMapRef(map);
+  }, [map, setMapRef]);
+  
   return null;
 }
 
@@ -150,11 +163,11 @@ export default function App() {
   // Selected site for detailed view
   const [selectedSite, setSelectedSite] = useState(null);
   
+  // Selected evaluation result for detailed view
+  const [selectedEvalResult, setSelectedEvalResult] = useState(null);
+  
   // Hovered site for glow effect
   const [hoveredSite, setHoveredSite] = useState(null);
-  
-  // Fullscreen map mode
-  const [isFullscreen, setIsFullscreen] = useState(false);
   
   // Error messages
   const [recommendError, setRecommendError] = useState('');
@@ -169,6 +182,21 @@ export default function App() {
   
   // Search area change confirmation
   const [pendingSearchLocation, setPendingSearchLocation] = useState(null);
+  
+  // Remove marker confirmation
+  const [showRemoveMarkerConfirm, setShowRemoveMarkerConfirm] = useState(false);
+  
+  // Address search
+  const [addressQuery, setAddressQuery] = useState('');
+  const [addressSuggestions, setAddressSuggestions] = useState([]);
+  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
+  
+  // Map reference for zooming
+  const [mapRef, setMapRef] = useState(null);
+  
+  // Address input ref for dropdown positioning
+  const addressInputRef = React.useRef(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
 
   // ── Load data on mount ──
   useEffect(() => {
@@ -273,6 +301,7 @@ export default function App() {
     if (!nearest) {
       setEvalError('No sites found in the area');
       setEvalResult(null);
+      setSelectedEvalResult(null);
       return;
     }
 
@@ -281,11 +310,12 @@ export default function App() {
     if (minDist > 1.0) {
       setEvalError('This location appears to be in the sea or outside Talomo District. Please select a location on land within the district.');
       setEvalResult(null);
+      setSelectedEvalResult(null);
       return;
     }
 
     // Use the nearest site's pre-computed data from candidate_sites.json
-    setEvalResult({
+    const result = {
       lat,
       lon,
       site: nearest,
@@ -309,7 +339,11 @@ export default function App() {
         landslide: nearest.landslide_norm,
         stormsurge: nearest.stormsurge_norm
       }
-    });
+    };
+    
+    setEvalResult(result);
+    // Don't auto-select, let user click marker to see details
+    setSelectedEvalResult(null);
   }
 
   // ── Handle exit map ──
@@ -320,6 +354,7 @@ export default function App() {
     setEvalResult(null);
     setEvalPoint(null);
     setSelectedSite(null);
+    setSelectedEvalResult(null);
     setSearchLat('');
     setSearchLon('');
     setEvalLat('');
@@ -327,6 +362,99 @@ export default function App() {
     setRecommendError('');
     setEvalError('');
     setHasSearched(false);
+    setAddressQuery('');
+    setAddressSuggestions([]);
+    setShowAddressSuggestions(false);
+  }
+  
+  // ── Address search handler ──
+  function handleAddressSearch(query) {
+    setAddressQuery(query);
+    
+    // Get unique barangays with fallback coordinates
+    const allBarangays = [
+      { name: 'Talomo', lat: 7.055, lon: 125.53 },
+      { name: 'Talomo Proper', lat: 7.085, lon: 125.56 },
+      { name: 'Ma-a', lat: 7.075, lon: 125.535 },
+      { name: 'Matina', lat: 7.065, lon: 125.56 },
+      { name: 'Matina Crossing', lat: 7.065, lon: 125.59 },
+      { name: 'Bago Aplaya', lat: 7.04, lon: 125.48 },
+      { name: 'Catalunan Grande', lat: 7.06, lon: 125.50 }
+    ];
+    
+    if (query.length < 1) {
+      // Show all barangays when empty
+      const barangaySites = allBarangays.map(barangay => {
+        // Find a representative site for each barangay, or use fallback coordinates
+        const site = sites.find(s => generateAddress(s.latitude, s.longitude) === barangay.name);
+        if (site) {
+          return { ...site, address: barangay.name };
+        } else {
+          // Use fallback coordinates if no site found
+          return {
+            site_id: barangay.name,
+            latitude: barangay.lat,
+            longitude: barangay.lon,
+            address: barangay.name
+          };
+        }
+      });
+      
+      setAddressSuggestions(barangaySites);
+      updateDropdownPosition();
+      setShowAddressSuggestions(true);
+      return;
+    }
+    
+    // Filter barangays based on search query
+    const matchingBarangays = allBarangays.filter(barangay => 
+      barangay.name.toLowerCase().includes(query.toLowerCase())
+    );
+    
+    const barangaySites = matchingBarangays.map(barangay => {
+      // Find a representative site for each matching barangay, or use fallback coordinates
+      const site = sites.find(s => generateAddress(s.latitude, s.longitude) === barangay.name);
+      if (site) {
+        return { ...site, address: barangay.name };
+      } else {
+        // Use fallback coordinates if no site found
+        return {
+          site_id: barangay.name,
+          latitude: barangay.lat,
+          longitude: barangay.lon,
+          address: barangay.name
+        };
+      }
+    });
+    
+    setAddressSuggestions(barangaySites);
+    updateDropdownPosition();
+    setShowAddressSuggestions(barangaySites.length > 0);
+  }
+  
+  function updateDropdownPosition() {
+    if (addressInputRef.current) {
+      const rect = addressInputRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom,
+        left: rect.left
+      });
+    }
+  }
+  
+  function selectAddress(site) {
+    const barangay = site.address;
+    
+    // Just zoom to the selected location without setting coordinates
+    if (mapRef) {
+      mapRef.setView([site.latitude, site.longitude], 15, {
+        animate: true,
+        duration: 1
+      });
+    }
+    
+    setAddressQuery(barangay);
+    setShowAddressSuggestions(false);
   }
 
   // ── Handle mode switch with confirmation ──
@@ -342,6 +470,7 @@ export default function App() {
       setEvalResult(null);
       setEvalPoint(null);
       setSelectedSite(null);
+      setSelectedEvalResult(null);
       setEvalLat('');
       setEvalLon('');
       setEvalError('');
@@ -352,6 +481,7 @@ export default function App() {
       setHasSearched(false);
       setEvalPoint(null);
       setSelectedSite(null);
+      setSelectedEvalResult(null);
       setSearchLat('');
       setSearchLon('');
       setRecommendError('');
@@ -472,74 +602,38 @@ export default function App() {
   // Welcome screen
   if (showWelcome) {
     return (
-      <div style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.6)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 10000
-      }}>
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '16px',
-          padding: '40px',
-          maxWidth: '600px',
-          boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
-          textAlign: 'center'
-        }}>
-          <h1 style={{ color: '#1a5276', fontSize: '32px', marginBottom: '16px' }}>
+      <div className="welcome-overlay">
+        <div className="welcome-content">
+          <h1 className="welcome-title">
             Welcome to POLARIS
           </h1>
-          <p style={{ color: '#666', fontSize: '16px', marginBottom: '32px', lineHeight: '1.6' }}>
+          <p className="welcome-subtitle">
             Priority-Optimized Location and Risk-Adaptive Infrastructure Siting
           </p>
           
-          <h3 style={{ color: '#1a5276', fontSize: '20px', marginBottom: '24px' }}>
+          <h3 style={{ color: '#2d3748', fontSize: '22px', marginBottom: '32px', fontWeight: '700' }}>
             What would you like to do?
           </h3>
           
-          <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', marginBottom: '24px' }}>
+          <div className="mode-selection">
             <button
               onClick={() => setSelectedWelcomeMode(selectedWelcomeMode === 'recommendation' ? null : 'recommendation')}
-              style={{
-                flex: 1,
-                padding: '24px',
-                border: selectedWelcomeMode === 'recommendation' ? '3px solid #1a5276' : '2px solid #ccc',
-                borderRadius: '12px',
-                backgroundColor: selectedWelcomeMode === 'recommendation' ? '#e3f2fd' : 'white',
-                cursor: 'pointer',
-                transition: 'all 0.3s',
-                maxWidth: '250px'
-              }}
+              className={`mode-card ${selectedWelcomeMode === 'recommendation' ? 'selected' : ''}`}
             >
-              <div style={{ fontSize: '40px', marginBottom: '12px' }}>🔍</div>
-              <h4 style={{ fontSize: '18px', marginBottom: '8px', color: '#1a5276' }}>Recommendation</h4>
-              <p style={{ fontSize: '14px', color: '#666', margin: 0 }}>
+              <div className="mode-icon">🔍</div>
+              <h4 className="mode-title">Recommendation</h4>
+              <p className="mode-description">
                 Find suitable sites within a specific area
               </p>
             </button>
             
             <button
               onClick={() => setSelectedWelcomeMode(selectedWelcomeMode === 'evaluation' ? null : 'evaluation')}
-              style={{
-                flex: 1,
-                padding: '24px',
-                border: selectedWelcomeMode === 'evaluation' ? '3px solid #1a5276' : '2px solid #ccc',
-                borderRadius: '12px',
-                backgroundColor: selectedWelcomeMode === 'evaluation' ? '#e3f2fd' : 'white',
-                cursor: 'pointer',
-                transition: 'all 0.3s',
-                maxWidth: '250px'
-              }}
+              className={`mode-card ${selectedWelcomeMode === 'evaluation' ? 'selected' : ''}`}
             >
-              <div style={{ fontSize: '40px', marginBottom: '12px' }}>📊</div>
-              <h4 style={{ fontSize: '18px', marginBottom: '8px', color: '#1a5276' }}>Evaluation</h4>
-              <p style={{ fontSize: '14px', color: '#666', margin: 0 }}>
+              <div className="mode-icon">📊</div>
+              <h4 className="mode-title">Evaluation</h4>
+              <p className="mode-description">
                 Assess suitability of a specific location
               </p>
             </button>
@@ -553,24 +647,13 @@ export default function App() {
               }
             }}
             disabled={!selectedWelcomeMode}
-            style={{
-              padding: '14px 32px',
-              border: 'none',
-              borderRadius: '8px',
-              backgroundColor: selectedWelcomeMode ? '#1a5276' : '#ccc',
-              color: 'white',
-              cursor: selectedWelcomeMode ? 'pointer' : 'not-allowed',
-              fontSize: '16px',
-              fontWeight: '600',
-              transition: 'all 0.3s',
-              width: '200px'
-            }}
+            className="enter-map-btn"
           >
             🗺️ Enter Map
           </button>
           
           {!selectedWelcomeMode && (
-            <p style={{ marginTop: '16px', fontSize: '13px', color: '#999' }}>
+            <p className="welcome-hint">
               Please select a mode to continue
             </p>
           )}
@@ -583,10 +666,10 @@ export default function App() {
     <div className="app">
       {/* Navigation Bar */}
       <nav style={{
-        backgroundColor: '#0891b2',
-        padding: '16px 0',
-        marginBottom: '20px',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        padding: '12px 0',
+        marginBottom: '0',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
       }}>
         <div style={{
           maxWidth: '1400px',
@@ -597,26 +680,28 @@ export default function App() {
           alignItems: 'center'
         }}>
           <div>
-            <h1 style={{ color: 'white', margin: 0, fontSize: '24px' }}>POLARIS</h1>
-            <p style={{ color: 'rgba(255,255,255,0.8)', margin: '4px 0 0 0', fontSize: '13px' }}>
+            <h1 style={{ color: 'white', margin: 0, fontSize: '20px', fontWeight: '800', letterSpacing: '-0.5px' }}>POLARIS</h1>
+            <p style={{ color: 'rgba(255,255,255,0.9)', margin: '2px 0 0 0', fontSize: '10px', fontWeight: '500' }}>
               Priority-Optimized Location and Risk-Adaptive Infrastructure Siting
             </p>
           </div>
           
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <button
               type="button"
               onClick={() => handleModeSwitch('recommendation')}
               style={{
-                padding: '10px 20px',
-                border: mode === 'recommendation' ? '2px solid white' : '2px solid transparent',
-                borderRadius: '6px',
-                backgroundColor: mode === 'recommendation' ? 'white' : 'rgba(255,255,255,0.1)',
-                color: mode === 'recommendation' ? '#0891b2' : 'white',
+                padding: '8px 16px',
+                border: mode === 'recommendation' ? '2px solid white' : '2px solid rgba(255,255,255,0.3)',
+                borderRadius: '8px',
+                background: mode === 'recommendation' ? 'white' : 'rgba(255,255,255,0.1)',
+                color: mode === 'recommendation' ? '#667eea' : 'white',
                 cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '600',
-                transition: 'all 0.2s'
+                fontSize: '12px',
+                fontWeight: '700',
+                transition: 'all 0.3s',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
               }}
             >
               🔍 Recommendation
@@ -625,68 +710,48 @@ export default function App() {
               type="button"
               onClick={() => handleModeSwitch('evaluation')}
               style={{
-                padding: '10px 20px',
-                border: mode === 'evaluation' ? '2px solid white' : '2px solid transparent',
-                borderRadius: '6px',
-                backgroundColor: mode === 'evaluation' ? 'white' : 'rgba(255,255,255,0.1)',
-                color: mode === 'evaluation' ? '#0891b2' : 'white',
+                padding: '8px 16px',
+                border: mode === 'evaluation' ? '2px solid white' : '2px solid rgba(255,255,255,0.3)',
+                borderRadius: '8px',
+                background: mode === 'evaluation' ? 'white' : 'rgba(255,255,255,0.1)',
+                color: mode === 'evaluation' ? '#667eea' : 'white',
                 cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '600',
-                transition: 'all 0.2s'
+                fontSize: '12px',
+                fontWeight: '700',
+                transition: 'all 0.3s',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
               }}
             >
               📊 Evaluation
             </button>
             
-            <div style={{ width: '1px', height: '30px', backgroundColor: 'rgba(255,255,255,0.3)', margin: '0 4px' }}></div>
-            
-            <button
-              type="button"
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              style={{
-                padding: '10px 20px',
-                border: '2px solid rgba(255,255,255,0.5)',
-                borderRadius: '6px',
-                backgroundColor: 'rgba(255,255,255,0.1)',
-                color: 'white',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '600',
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.2)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)';
-              }}
-            >
-              {isFullscreen ? '� Show Controls' : '🗺️ Fullscreen Map'}
-            </button>
+            <div style={{ width: '1px', height: '24px', backgroundColor: 'rgba(255,255,255,0.3)', margin: '0 4px' }}></div>
             
             <button
               type="button"
               onClick={handleExitMap}
               style={{
-                padding: '10px 20px',
-                border: '2px solid rgba(255,255,255,0.5)',
-                borderRadius: '6px',
-                backgroundColor: 'rgba(255,255,255,0.1)',
+                padding: '8px 16px',
+                border: '2px solid rgba(255,255,255,0.3)',
+                borderRadius: '8px',
+                background: 'rgba(255,255,255,0.1)',
                 color: 'white',
                 cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '600',
-                transition: 'all 0.2s'
+                fontSize: '12px',
+                fontWeight: '700',
+                transition: 'all 0.3s',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.2)';
+                e.currentTarget.style.background = 'rgba(255,255,255,0.2)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)';
+                e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
               }}
             >
-              🚪 Exit Map
+              🚪 Exit
             </button>
           </div>
         </div>
@@ -818,9 +883,130 @@ export default function App() {
         </div>
       )}
 
+      {/* Remove Marker Confirmation Dialog */}
+      {showRemoveMarkerConfirm && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          zIndex: 10000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            padding: '32px',
+            maxWidth: '450px',
+            boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3)'
+          }}>
+            <h3 style={{ color: '#dc3545', marginBottom: '16px', fontSize: '20px' }}>
+              Remove Marker?
+            </h3>
+            <p style={{ color: '#666', marginBottom: '24px', lineHeight: '1.6' }}>
+              This will remove the search center marker and clear your search coordinates. You can place a new marker by clicking on the map.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowRemoveMarkerConfirm(false)}
+                style={{
+                  padding: '10px 20px',
+                  border: '1px solid #ccc',
+                  borderRadius: '6px',
+                  backgroundColor: 'white',
+                  color: '#333',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setSearchLat('');
+                  setSearchLon('');
+                  setResults([]);
+                  setHasSearched(false);
+                  setRecommendError('');
+                  setShowRemoveMarkerConfirm(false);
+                }}
+                style={{
+                  padding: '10px 20px',
+                  border: 'none',
+                  borderRadius: '6px',
+                  backgroundColor: '#dc3545',
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600'
+                }}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Controls ── */}
-      {!isFullscreen && (
-        <div className="controls">
+      <div className="controls">
+        
+        {/* Address Search Row */}
+        <div className="control-row">
+          <div className="control-group-full">
+            <label>🔍 Search Address:</label>
+            <div className="address-search-wrapper">
+              <input
+                ref={addressInputRef}
+                type="text"
+                placeholder="Search or select barangay..."
+                value={addressQuery}
+                onChange={(e) => handleAddressSearch(e.target.value)}
+                onFocus={() => {
+                  // Update dropdown position and show all barangays when focused
+                  updateDropdownPosition();
+                  if (addressQuery.length === 0) {
+                    handleAddressSearch('');
+                  } else if (addressSuggestions.length > 0) {
+                    setShowAddressSuggestions(true);
+                  }
+                }}
+                onBlur={() => {
+                  // Delay to allow click on suggestion
+                  setTimeout(() => setShowAddressSuggestions(false), 200);
+                }}
+                className="address-input"
+              />
+              {showAddressSuggestions && addressSuggestions.length > 0 && (
+                <div 
+                  className="address-suggestions"
+                  style={{
+                    top: `${dropdownPosition.top}px`,
+                    left: `${dropdownPosition.left}px`
+                  }}
+                >
+                  {addressSuggestions.map((site) => (
+                    <div
+                      key={site.site_id}
+                      className="address-suggestion-item"
+                      onMouseDown={(e) => {
+                        e.preventDefault(); // Prevent blur
+                        selectAddress(site);
+                      }}
+                    >
+                      {site.address}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
 
         <div className="control-row">
           <div className="control-group-full">
@@ -904,6 +1090,36 @@ export default function App() {
                   className="input-equal"
                   style={{ maxWidth: '180px' }}
                 />
+                {searchLat && searchLon && (
+                  <button
+                    type="button"
+                    onClick={() => setShowRemoveMarkerConfirm(true)}
+                    style={{
+                      padding: '8px 16px',
+                      border: '2px solid #dc3545',
+                      borderRadius: '8px',
+                      background: 'white',
+                      color: '#dc3545',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      transition: 'all 0.3s',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      whiteSpace: 'nowrap'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#dc3545';
+                      e.currentTarget.style.color = 'white';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'white';
+                      e.currentTarget.style.color = '#dc3545';
+                    }}
+                  >
+                    ✕ Remove Marker
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -920,6 +1136,7 @@ export default function App() {
                 onChange={(e) => setMinPopulation(e.target.value)}
                 className="input-equal"
                 title="Optional: Filter by minimum estimated population"
+                min="0"
               />
               <input
                 type="number"
@@ -929,6 +1146,7 @@ export default function App() {
                 onChange={(e) => setMaxFacilityDistance(e.target.value)}
                 className="input-equal"
                 title="Optional: Filter by maximum distance to healthcare facility"
+                min="0"
               />
               <input
                 type="number"
@@ -953,7 +1171,6 @@ export default function App() {
           </div>
         )}
       </div>
-      )}
 
       {/* ── Map with Floating Sidebar ── */}
       <div className="map-wrapper">
@@ -968,6 +1185,7 @@ export default function App() {
               attribution="&copy; OpenStreetMap contributors"
             />
             <MapClickHandler onMapClick={handleMapClick} />
+            <MapRefHandler setMapRef={setMapRef} />
 
             {/* Highlighted results in recommendation mode */}
             {mode === 'recommendation' && results.map((site) => {
@@ -1043,13 +1261,14 @@ export default function App() {
               <CircleMarker
                 center={[evalPoint.lat, evalPoint.lon]}
                 radius={8}
-                fillColor="#0066ff"
-                color="#0066ff"
-                fillOpacity={0.8}
+                fillColor="#667eea"
+                color="#ffffff"
+                fillOpacity={0.9}
                 opacity={1}
+                weight={3}
               >
                 <Popup>
-                  <strong>Evaluation Point</strong>
+                  <strong>📍 Evaluation Point</strong>
                   <br />Lat: {evalPoint.lat.toFixed(6)}
                   <br />Lon: {evalPoint.lon.toFixed(6)}
                 </Popup>
@@ -1059,10 +1278,19 @@ export default function App() {
         </div>
 
         {/* Floating Sidebar for Recommendation Results */}
-        {mode === 'recommendation' && hasSearched && !isFullscreen && (
+        {mode === 'recommendation' && hasSearched && (
           <div className="sidebar">
             <div className="sidebar-content">
-              <h3 style={{ color: '#0891b2', marginBottom: '8px', fontSize: '18px' }}>
+              <h3 style={{ 
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+                marginBottom: '12px', 
+                fontSize: '22px',
+                fontWeight: '800',
+                letterSpacing: '-0.5px'
+              }}>
                 Recommended Sites ({results.length})
               </h3>
               {results.length === 0 ? (
@@ -1263,28 +1491,207 @@ export default function App() {
         </>
       )}
 
-      {/* ── Evaluation Result ── */}
-      {mode === 'evaluation' && evalResult && (
-        <div className="results">
-          <h3 title="Assessment of how suitable this specific location is for a health facility">
-            Location Suitability Evaluation
-          </h3>
-          <div className="eval-card">
-            <h4>📍 Location: {evalResult.lat.toFixed(6)}, {evalResult.lon.toFixed(6)}</h4>
+      {/* ── Evaluation Result Panel ── */}
+      {mode === 'evaluation' && evalResult && !selectedEvalResult && (
+        <div className="sidebar" style={{ 
+          width: '380px',
+          maxHeight: 'none',
+          height: 'auto',
+          overflow: 'visible'
+        }}>
+          <div className="sidebar-content" style={{ padding: '16px' }}>
+            <h3 style={{ 
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+              marginBottom: '10px', 
+              fontSize: '18px',
+              fontWeight: '800',
+              letterSpacing: '-0.5px'
+            }}>
+              📍 Evaluation Result
+            </h3>
             
-            {evalResult.outsideCoverage && (
-              <div style={{ 
-                marginBottom: '15px', 
-                padding: '12px', 
-                backgroundColor: '#fff3cd', 
-                borderRadius: '6px',
-                borderLeft: '4px solid #ffc107'
-              }}>
-                ⚠️ <strong>Note:</strong> This location is {evalResult.distance.toFixed(2)}km from the nearest analyzed site. 
-                Results are based on the closest available data point.
+            <div style={{ marginBottom: '10px' }}>
+              <p style={{ fontSize: '11px', color: '#666', marginBottom: '4px', lineHeight: '1.3' }}>
+                <strong>Barangay:</strong> {generateAddress(evalResult.lat, evalResult.lon)}
+              </p>
+              <p style={{ fontSize: '11px', color: '#666', marginBottom: '6px', lineHeight: '1.3' }}>
+                <strong>Coordinates:</strong> {evalResult.lat.toFixed(6)}, {evalResult.lon.toFixed(6)}
+              </p>
+              
+              {evalResult.outsideCoverage && (
+                <div style={{ 
+                  marginBottom: '8px', 
+                  padding: '6px 8px', 
+                  backgroundColor: '#fff3cd', 
+                  borderRadius: '6px',
+                  borderLeft: '3px solid #ffc107',
+                  fontSize: '10px',
+                  lineHeight: '1.3'
+                }}>
+                  ⚠️ {evalResult.distance.toFixed(2)}km from nearest analyzed site
+                </div>
+              )}
+            </div>
+            
+            <div style={{ 
+              background: 'linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%)',
+              padding: '12px',
+              borderRadius: '10px',
+              marginBottom: '10px',
+              border: '2px solid #e2e8f0'
+            }}>
+              <h4 style={{ color: '#2d3748', fontSize: '13px', marginBottom: '8px', fontWeight: '700' }}>
+                Suitability Assessment
+              </h4>
+              
+              <div style={{ display: 'grid', gap: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '11px', color: '#666' }}>Suitability Score:</span>
+                  <span style={{ fontSize: '14px', fontWeight: '700', color: '#667eea' }}>
+                    {config === 'modelA' ? evalResult.scoreA.toFixed(4) : 
+                     config === 'modelB' ? evalResult.scoreB.toFixed(4) : 
+                     ((evalResult.scoreA + evalResult.scoreB) / 2).toFixed(4)}
+                  </span>
+                </div>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '11px', color: '#666' }}>Classification:</span>
+                  <span style={{ 
+                    fontSize: '12px', 
+                    fontWeight: '700',
+                    color: getColor(config === 'modelA' ? evalResult.classA : 
+                                   config === 'modelB' ? evalResult.classB : evalResult.classB)
+                  }}>
+                    {config === 'modelA' ? evalResult.classA : 
+                     config === 'modelB' ? evalResult.classB : evalResult.classB}
+                  </span>
+                </div>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '11px', color: '#666' }}>Recommendation:</span>
+                  <span style={{ 
+                    fontSize: '11px', 
+                    fontWeight: '700',
+                    color: getRecommendationColor(config === 'modelA' ? evalResult.levelA : 
+                                                  config === 'modelB' ? evalResult.levelB : evalResult.levelB),
+                    textAlign: 'right'
+                  }}>
+                    {config === 'modelA' ? evalResult.site.rec_label_A : 
+                     config === 'modelB' ? evalResult.site.rec_label_B : evalResult.site.rec_label_B}
+                  </span>
+                </div>
               </div>
-            )}
+            </div>
             
+            <button
+              onClick={() => setSelectedEvalResult(evalResult)}
+              className="gradient-btn"
+              style={{ width: '100%', marginBottom: '8px', padding: '10px', fontSize: '12px' }}
+            >
+              📊 View Full Details
+            </button>
+            
+            <button
+              onClick={() => {
+                setEvalResult(null);
+                setEvalPoint(null);
+                setEvalLat('');
+                setEvalLon('');
+              }}
+              style={{
+                width: '100%',
+                padding: '8px',
+                border: '2px solid #e2e8f0',
+                borderRadius: '8px',
+                background: 'white',
+                color: '#666',
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: '600',
+                transition: 'all 0.3s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = '#667eea';
+                e.currentTarget.style.color = '#667eea';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = '#e2e8f0';
+                e.currentTarget.style.color = '#666';
+              }}
+            >
+              ✕ Clear Evaluation
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Evaluation Full Details Modal ── */}
+      {mode === 'evaluation' && selectedEvalResult && (
+        <div className="modal-overlay" onClick={() => setSelectedEvalResult(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ 
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+                margin: 0, 
+                fontSize: '26px',
+                fontWeight: '800'
+              }}>
+                📍 Location Suitability Evaluation
+              </h3>
+              <button 
+                onClick={() => setSelectedEvalResult(null)}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderRadius: '8px',
+                  background: 'linear-gradient(135deg, #f5576c 0%, #f093fb 100%)',
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '700',
+                  transition: 'all 0.3s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(245, 87, 108, 0.4)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                ✕ Close
+              </button>
+            </div>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <p style={{ fontSize: '15px', color: '#666', marginBottom: '4px' }}>
+                <strong>Barangay:</strong> {generateAddress(selectedEvalResult.lat, selectedEvalResult.lon)}
+              </p>
+              <p style={{ fontSize: '15px', color: '#666', marginBottom: '8px' }}>
+                <strong>Coordinates:</strong> {selectedEvalResult.lat.toFixed(6)}, {selectedEvalResult.lon.toFixed(6)}
+              </p>
+              
+              {selectedEvalResult.outsideCoverage && (
+                <div style={{ 
+                  marginBottom: '15px', 
+                  padding: '12px', 
+                  backgroundColor: '#fff3cd', 
+                  borderRadius: '8px',
+                  borderLeft: '4px solid #ffc107'
+                }}>
+                  ⚠️ <strong>Note:</strong> This location is {selectedEvalResult.distance.toFixed(2)}km from the nearest analyzed site. 
+                  Results are based on the closest available data point.
+                </div>
+              )}
+            </div>
+
             <h4 title="Overall scores indicating how suitable this location is (0-1 scale, higher is better)">
               Suitability Scores
             </h4>
@@ -1321,16 +1728,16 @@ export default function App() {
                 <tr>
                   <td><strong>Suitability Score</strong></td>
                   {config === 'modelA' && (
-                    <td style={{ fontSize: '1.2em', fontWeight: 'bold' }} title="Neural network output: weighted combination of population, road access, and facility distance">{evalResult.scoreA.toFixed(4)}</td>
+                    <td style={{ fontSize: '1.2em', fontWeight: 'bold' }} title="Neural network output: weighted combination of population, road access, and facility distance">{selectedEvalResult.scoreA.toFixed(4)}</td>
                   )}
                   {config === 'modelB' && (
-                    <td style={{ fontSize: '1.2em', fontWeight: 'bold' }} title="Neural network output: weighted combination of location factors + hazard penalties (flood, landslide, storm surge)">{evalResult.scoreB.toFixed(4)}</td>
+                    <td style={{ fontSize: '1.2em', fontWeight: 'bold' }} title="Neural network output: weighted combination of location factors + hazard penalties (flood, landslide, storm surge)">{selectedEvalResult.scoreB.toFixed(4)}</td>
                   )}
                   {config === 'both' && (
                     <>
-                      <td style={{ fontSize: '1.2em', fontWeight: 'bold' }} title="Neural network output: weighted combination of population, road access, and facility distance">{evalResult.scoreA.toFixed(4)}</td>
-                      <td style={{ fontSize: '1.2em', fontWeight: 'bold' }} title="Neural network output: weighted combination of location factors + hazard penalties (flood, landslide, storm surge)">{evalResult.scoreB.toFixed(4)}</td>
-                      <td style={{ fontSize: '1.2em', fontWeight: 'bold' }} title="Score difference: No Hazard - With Hazard">{(evalResult.scoreA - evalResult.scoreB).toFixed(4)}</td>
+                      <td style={{ fontSize: '1.2em', fontWeight: 'bold' }} title="Neural network output: weighted combination of population, road access, and facility distance">{selectedEvalResult.scoreA.toFixed(4)}</td>
+                      <td style={{ fontSize: '1.2em', fontWeight: 'bold' }} title="Neural network output: weighted combination of location factors + hazard penalties (flood, landslide, storm surge)">{selectedEvalResult.scoreB.toFixed(4)}</td>
+                      <td style={{ fontSize: '1.2em', fontWeight: 'bold' }} title="Score difference: No Hazard - With Hazard">{(selectedEvalResult.scoreA - selectedEvalResult.scoreB).toFixed(4)}</td>
                     </>
                   )}
                 </tr>
@@ -1339,86 +1746,68 @@ export default function App() {
                     <strong>Suitability Level</strong>
                   </td>
                   {config === 'modelA' && (
-                    <td style={{ color: getColor(evalResult.classA), fontWeight: 'bold' }} title="Classification based on score thresholds: High (≥0.60), Moderate (≥0.40), Low (≥0.25), Very Low (<0.25)">{evalResult.classA}</td>
+                    <td style={{ color: getColor(selectedEvalResult.classA), fontWeight: 'bold' }} title="Classification based on score thresholds: High (≥0.60), Moderate (≥0.40), Low (≥0.25), Very Low (<0.25)">{selectedEvalResult.classA}</td>
                   )}
                   {config === 'modelB' && (
-                    <td style={{ color: getColor(evalResult.classB), fontWeight: 'bold' }} title="Classification based on score thresholds: High (≥0.60), Moderate (≥0.40), Low (≥0.25), Very Low (<0.25)">{evalResult.classB}</td>
+                    <td style={{ color: getColor(selectedEvalResult.classB), fontWeight: 'bold' }} title="Classification based on score thresholds: High (≥0.60), Moderate (≥0.40), Low (≥0.25), Very Low (<0.25)">{selectedEvalResult.classB}</td>
                   )}
                   {config === 'both' && (
                     <>
-                      <td style={{ color: getColor(evalResult.classA), fontWeight: 'bold' }} title="Classification based on score thresholds: High (≥0.60), Moderate (≥0.40), Low (≥0.25), Very Low (<0.25)">{evalResult.classA}</td>
-                      <td style={{ color: getColor(evalResult.classB), fontWeight: 'bold' }} title="Classification based on score thresholds: High (≥0.60), Moderate (≥0.40), Low (≥0.25), Very Low (<0.25)">{evalResult.classB}</td>
-                      <td title="Level change when hazards are considered">{evalResult.classA !== evalResult.classB ? `${evalResult.classA} → ${evalResult.classB}` : 'No change'}</td>
+                      <td style={{ color: getColor(selectedEvalResult.classA), fontWeight: 'bold' }} title="Classification based on score thresholds: High (≥0.60), Moderate (≥0.40), Low (≥0.25), Very Low (<0.25)">{selectedEvalResult.classA}</td>
+                      <td style={{ color: getColor(selectedEvalResult.classB), fontWeight: 'bold' }} title="Classification based on score thresholds: High (≥0.60), Moderate (≥0.40), Low (≥0.25), Very Low (<0.25)">{selectedEvalResult.classB}</td>
+                      <td title="Level change when hazards are considered">{selectedEvalResult.classA !== selectedEvalResult.classB ? `${selectedEvalResult.classA} → ${selectedEvalResult.classB}` : 'No change'}</td>
                     </>
                   )}
                 </tr>
                 <tr>
-                  <td title="How this location ranks compared to all analyzed sites in Talomo">
-                    <strong>Overall Rank</strong>
-                  </td>
-                  {config === 'modelA' && (
-                    <td title="Ranking among all {sites.length} analyzed sites, sorted by score (1 = highest)">#{evalResult.rankA} of {sites.length}</td>
-                  )}
-                  {config === 'modelB' && (
-                    <td title="Ranking among all {sites.length} analyzed sites, sorted by score (1 = highest)">#{evalResult.rankB} of {sites.length}</td>
-                  )}
-                  {config === 'both' && (
-                    <>
-                      <td title="Ranking among all {sites.length} analyzed sites, sorted by score (1 = highest)">#{evalResult.rankA} of {sites.length}</td>
-                      <td title="Ranking among all {sites.length} analyzed sites, sorted by score (1 = highest)">#{evalResult.rankB} of {sites.length}</td>
-                      <td title="Rank difference: No Hazard - With Hazard">{evalResult.rankA - evalResult.rankB}</td>
-                    </>
-                  )}
-                </tr>
-                <tr>
-                  <td title="Level 3 = Highly recommended, Level 2 = Moderately suitable, Level 1 = Conditionally suitable">
+                  <td title="Recommendation level based on suitability score">
                     <strong>Recommendation</strong>
                   </td>
                   {config === 'modelA' && (
                     <td style={{ 
-                      color: getRecommendationColor(evalResult.levelA), 
+                      color: getRecommendationColor(selectedEvalResult.levelA), 
                       fontWeight: 'bold',
                       fontSize: '1.1em'
                     }} title="Level based on score: Highly Suitable (≥0.6), Moderately Suitable (≥0.4), Conditionally Suitable (≥0.2), Not Suitable (<0.2)">
-                      {evalResult.site.rec_label_A}
+                      {selectedEvalResult.site.rec_label_A}
                     </td>
                   )}
                   {config === 'modelB' && (
                     <td style={{ 
-                      color: getRecommendationColor(evalResult.levelB), 
+                      color: getRecommendationColor(selectedEvalResult.levelB), 
                       fontWeight: 'bold',
                       fontSize: '1.1em'
                     }} title="Level based on score: Highly Suitable (≥0.6), Moderately Suitable (≥0.4), Conditionally Suitable (≥0.2), Not Suitable (<0.2)">
-                      {evalResult.site.rec_label_B}
+                      {selectedEvalResult.site.rec_label_B}
                     </td>
                   )}
                   {config === 'both' && (
                     <>
                       <td style={{ 
-                        color: getRecommendationColor(evalResult.levelA), 
+                        color: getRecommendationColor(selectedEvalResult.levelA), 
                         fontWeight: 'bold',
                         fontSize: '1.1em'
                       }} title="Level based on score: Highly Suitable (≥0.6), Moderately Suitable (≥0.4), Conditionally Suitable (≥0.2), Not Suitable (<0.2)">
-                        {evalResult.site.rec_label_A}
+                        {selectedEvalResult.site.rec_label_A}
                       </td>
                       <td style={{ 
-                        color: getRecommendationColor(evalResult.levelB), 
+                        color: getRecommendationColor(selectedEvalResult.levelB), 
                         fontWeight: 'bold',
                         fontSize: '1.1em'
                       }} title="Level based on score: Highly Suitable (≥0.6), Moderately Suitable (≥0.4), Conditionally Suitable (≥0.2), Not Suitable (<0.2)">
-                        {evalResult.site.rec_label_B}
+                        {selectedEvalResult.site.rec_label_B}
                       </td>
-                      <td title="Recommendation level difference">{evalResult.levelA - evalResult.levelB}</td>
+                      <td title="Recommendation level difference">{selectedEvalResult.levelA - selectedEvalResult.levelB}</td>
                     </>
                   )}
                 </tr>
               </tbody>
             </table>
 
-            {config === 'both' && evalResult.classA !== evalResult.classB && (
+            {config === 'both' && selectedEvalResult.classA !== selectedEvalResult.classB && (
               <p className="warning" style={{ marginTop: '15px', padding: '10px', backgroundColor: '#fff3cd', borderRadius: '4px' }}>
-                ⚠️ <strong>Note:</strong> Suitability level changes from <strong>{evalResult.classA}</strong> to{' '}
-                <strong>{evalResult.classB}</strong> when natural hazards are considered.
+                ⚠️ <strong>Note:</strong> Suitability level changes from <strong>{selectedEvalResult.classA}</strong> to{' '}
+                <strong>{selectedEvalResult.classB}</strong> when natural hazards are considered.
               </p>
             )}
             
@@ -1438,22 +1827,22 @@ export default function App() {
                   <td title="How many people live in this area">
                     <strong>Population Density</strong>
                   </td>
-                  <td title="Normalized building count per area: (building_count - min) / (max - min)">{evalResult.factors.buildingDensity.toFixed(4)}</td>
-                  <td>{evalResult.factors.buildingDensity > 0.5 ? 'High population - more people to serve' : 'Lower population - fewer potential patients'}</td>
+                  <td title="Normalized building count per area: (building_count - min) / (max - min)">{selectedEvalResult.factors.buildingDensity.toFixed(4)}</td>
+                  <td>{selectedEvalResult.factors.buildingDensity > 0.5 ? 'High population - more people to serve' : 'Lower population - fewer potential patients'}</td>
                 </tr>
                 <tr>
                   <td title="How easy it is to reach this location by road">
                     <strong>Road Access</strong>
                   </td>
-                  <td title="Normalized proximity to roads: (distance_to_road - min) / (max - min), inverted so closer = higher">{evalResult.factors.roadAccessibility.toFixed(4)}</td>
-                  <td>{evalResult.factors.roadAccessibility > 0.5 ? 'Good road access - easy to reach' : 'Limited road access - may be harder to reach'}</td>
+                  <td title="Normalized proximity to roads: (distance_to_road - min) / (max - min), inverted so closer = higher">{selectedEvalResult.factors.roadAccessibility.toFixed(4)}</td>
+                  <td>{selectedEvalResult.factors.roadAccessibility > 0.5 ? 'Good road access - easy to reach' : 'Limited road access - may be harder to reach'}</td>
                 </tr>
                 <tr>
                   <td title="How far this is from the nearest healthcare facility">
                     <strong>Distance to Existing Facility</strong>
                   </td>
-                  <td title="Normalized distance to nearest facility: (distance - min) / (max - min)">{evalResult.factors.facilityDistance.toFixed(4)}</td>
-                  <td>{evalResult.factors.facilityDistance > 0.5 ? 'Far from existing facilities - may fill a gap' : 'Close to existing facilities - may have overlap'}</td>
+                  <td title="Normalized distance to nearest facility: (distance - min) / (max - min)">{selectedEvalResult.factors.facilityDistance.toFixed(4)}</td>
+                  <td>{selectedEvalResult.factors.facilityDistance > 0.5 ? 'Far from existing facilities - may fill a gap' : 'Close to existing facilities - may have overlap'}</td>
                 </tr>
               </tbody>
             </table>
@@ -1474,27 +1863,27 @@ export default function App() {
                   <td title="Risk of flooding during heavy rains or typhoons">
                     <strong>Flood Risk</strong>
                   </td>
-                  <td title="Normalized flood susceptibility: (flood_level - min) / (max - min) from hazard maps">{evalResult.factors.flood.toFixed(4)}</td>
-                  <td style={{ color: evalResult.factors.flood > 0.5 ? '#d73027' : '#1a9850', fontWeight: 'bold' }}>
-                    {evalResult.factors.flood > 0.5 ? 'High Risk' : 'Low Risk'}
+                  <td title="Normalized flood susceptibility: (flood_level - min) / (max - min) from hazard maps">{selectedEvalResult.factors.flood.toFixed(4)}</td>
+                  <td style={{ color: selectedEvalResult.factors.flood > 0.5 ? '#d73027' : '#1a9850', fontWeight: 'bold' }}>
+                    {selectedEvalResult.factors.flood > 0.5 ? 'High Risk' : 'Low Risk'}
                   </td>
                 </tr>
                 <tr>
                   <td title="Risk of landslides or soil movement">
                     <strong>Landslide Risk</strong>
                   </td>
-                  <td title="Normalized landslide susceptibility: (landslide_level - min) / (max - min) from hazard maps">{evalResult.factors.landslide.toFixed(4)}</td>
-                  <td style={{ color: evalResult.factors.landslide > 0.5 ? '#d73027' : '#1a9850', fontWeight: 'bold' }}>
-                    {evalResult.factors.landslide > 0.5 ? 'High Risk' : 'Low Risk'}
+                  <td title="Normalized landslide susceptibility: (landslide_level - min) / (max - min) from hazard maps">{selectedEvalResult.factors.landslide.toFixed(4)}</td>
+                  <td style={{ color: selectedEvalResult.factors.landslide > 0.5 ? '#d73027' : '#1a9850', fontWeight: 'bold' }}>
+                    {selectedEvalResult.factors.landslide > 0.5 ? 'High Risk' : 'Low Risk'}
                   </td>
                 </tr>
                 <tr>
                   <td title="Risk of coastal flooding from typhoons">
                     <strong>Storm Surge Risk</strong>
                   </td>
-                  <td title="Normalized storm surge susceptibility: (surge_level - min) / (max - min) from hazard maps">{evalResult.factors.stormsurge.toFixed(4)}</td>
-                  <td style={{ color: evalResult.factors.stormsurge > 0.5 ? '#d73027' : '#1a9850', fontWeight: 'bold' }}>
-                    {evalResult.factors.stormsurge > 0.5 ? 'High Risk' : 'Low Risk'}
+                  <td title="Normalized storm surge susceptibility: (surge_level - min) / (max - min) from hazard maps">{selectedEvalResult.factors.stormsurge.toFixed(4)}</td>
+                  <td style={{ color: selectedEvalResult.factors.stormsurge > 0.5 ? '#d73027' : '#1a9850', fontWeight: 'bold' }}>
+                    {selectedEvalResult.factors.stormsurge > 0.5 ? 'High Risk' : 'Low Risk'}
                   </td>
                 </tr>
               </tbody>
