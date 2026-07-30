@@ -5,11 +5,13 @@
 /.pnp
 .pnp.js
 
-# testing
-/coverage
-
-# production
+# build output
 /build
+/dist
+*.tsbuildinfo
+
+# deployment
+.vercel
 
 # misc
 .DS_Store

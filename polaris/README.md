@@ -1,70 +1,138 @@
-# Getting Started with Create React App
+# POLARIS
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+**Priority-Optimized Location and Risk-Adaptive Infrastructure Siting**
 
-## Available Scripts
+A GIS decision-support prototype for health-facility siting in **Talomo District, Davao City**, built on a hazard-integrated **Random Forest** suitability model.
 
-In the project directory, you can run:
+University of the Immaculate Conception — College of Computer Studies.
 
-### `npm start`
+---
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+## What it does
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+POLARIS scores every candidate site in the district on a **single composite
+suitability scale from 0 to 1** and explains each score in plain language.
 
-### `npm test`
+- **Recommend** — pick a search area and get the **top three eligible sites**
+  inside it, each with a written justification.
+- **Evaluate** — click any point and read its composite score and what drives it.
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+Hazard is not optional. Flood, landslide and storm-surge susceptibility are
+subtracted from every score, and a site rated High on any hazard — or sitting
+inside the **50 m shoreline setback** — is never recommended, whatever it scores.
 
-### `npm run build`
+## Stack
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+| Layer | Technology |
+|---|---|
+| Framework | React 19 + TypeScript, built with Vite 7 |
+| Map | [mapcn](https://github.com/AnmolSaini16/mapcn) `@mapcn/map` on MapLibre GL |
+| UI | Tailwind CSS v4 + shadcn/ui primitives (Radix) |
+| Model | Random Forest (scikit-learn), trained offline |
+| Data | Static JSON — no backend, no browser inference |
+| Deploy | Vercel |
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+The browser runs **no inference**. `public/data/candidate_sites.json` carries
+every site's pre-computed score, class, eligibility flag and interpretation; the
+app is a pure presentation layer that fetches it **once per session** and
+recomputes only when you press a button or hit Refresh.
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## Getting started
 
-### `npm run eject`
+```bash
+npm install
+npm run dev        # http://localhost:3000
+npm run build      # production build to /build
+npm run preview    # serve the production build
+npm run typecheck  # tsc --noEmit
+```
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+## Project layout
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+```
+polaris/
+├── data/legacy/                  # pre-defense export, kept for reproducible migration
+├── public/data/
+│   ├── candidate_sites.json      # scored sites + metadata (the only data the app reads)
+│   ├── talomo_boundary.json      # OSM district boundary
+│   ├── talomo_coastline.json     # OSM coastline — drives the 50 m buffer
+│   └── talomo_barangays.json     # OSM admin_level=10 polygons
+├── scripts/
+│   ├── fetch-geodata.mjs         # pulls boundary / coastline / barangays from OSM
+│   └── migrate-sites.mjs         # rebuilds candidate_sites.json in the revised schema
+└── src/
+    ├── App.tsx                   # orchestration, load-once state
+    ├── components/
+    │   ├── ui/                   # shadcn primitives + vendored mapcn map.tsx
+    │   ├── map/                  # site dots, shoreline band, boundary, search radius
+    │   └── *.tsx                 # panels and dialogs
+    ├── lib/                      # dataset loader, geometry, scoring vocabulary
+    └── types/polaris.ts          # dataset schema
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+## Data
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+### Using output from the training pipeline (preferred)
 
-## Learn More
+Run the revised notebook, then copy its export over the app's:
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+```bash
+cp .../outputs/webapp_export/candidate_sites.json public/data/candidate_sites.json
+```
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+No code changes are needed — the app reads the pipeline's schema directly.
 
-### Code Splitting
+### Regenerating the reference geometry
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+```bash
+npm run data:geo   # boundary + coastline + barangays from OSM
+```
 
-### Analyzing the Bundle Size
+Existing files are kept if a fetch fails, so an offline run never degrades the
+dataset.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+### The provisional dataset currently shipped
 
-### Making a Progressive Web App
+`public/data/candidate_sites.json` was produced by `npm run data:migrate` from
+the pre-defense export. Its scores are the **hazard-integrated MCDA composite**
+defined in Section 5 of the revised pipeline — the exact pseudo-target the
+Random Forest is trained to reproduce. They are **not** Random Forest
+predictions, and they are **not** the discarded neural network's output. The app
+surfaces this as a *Provisional dataset* badge under **Model and dataset**.
+Replace the file as above for final results.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+```bash
+npm run data:build   # geometry + migration in one step
+```
 
-### Advanced Configuration
+## Reading a score
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+Every site gets **one** number between 0 and 1. **Closer to 1 is more suitable.**
 
-### Deployment
+| Class | Composite score |
+|---|---|
+| Highly Suitable | ≥ 0.60 |
+| Moderately Suitable | 0.40 – 0.60 |
+| Low Suitability | 0.25 – 0.40 |
+| Not Suitable | < 0.25 |
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+Individual factor values run in the same direction. Road accessibility is a
+normalized *inverse* distance to the road network, so **0.007 means the site is
+far from roads and poorly accessible** — not that it is nearly zero-risk. The
+in-app guide (**?** in the header, and the welcome screen) says all of this
+before you see a single number.
 
-### `npm run build` fails to minify
+## Study area
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Talomo District, Davao City — OSM relation 19143671. Coordinates are WGS84;
+distances use the haversine formula.
+
+## Attribution
+
+Basemap tiles © [CARTO](https://carto.com/attributions), map data ©
+[OpenStreetMap](https://www.openstreetmap.org/copyright) contributors. Hazard
+layers from Project NOAH (landslide, storm surge) and the ph112402000 flood
+susceptibility shapefile.
+
+POLARIS is an advisory decision-support tool. Final siting decisions remain with
+planning officers.

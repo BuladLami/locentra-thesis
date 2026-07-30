@@ -1,13 +1,240 @@
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "maplibre-gl/dist/maplibre-gl.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ------------------------------------------------------------------ */
+/*  POLARIS design tokens                                              */
+/*  Light + dark are both fully defined so the map, panels and legend  */
+/*  stay legible in either theme.                                      */
+/* ------------------------------------------------------------------ */
+
+:root {
+  --radius: 0.75rem;
+
+  --background: oklch(0.985 0.003 240);
+  --foreground: oklch(0.21 0.03 258);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.03 258);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.03 258);
+  --primary: oklch(0.52 0.19 265);
+  --primary-foreground: oklch(0.985 0.003 240);
+  --secondary: oklch(0.968 0.007 248);
+  --secondary-foreground: oklch(0.28 0.04 260);
+  --muted: oklch(0.968 0.007 248);
+  --muted-foreground: oklch(0.55 0.02 257);
+  --accent: oklch(0.955 0.015 265);
+  --accent-foreground: oklch(0.28 0.04 260);
+  --destructive: oklch(0.58 0.22 27);
+  --destructive-foreground: oklch(0.985 0.003 240);
+  --border: oklch(0.92 0.01 255);
+  --input: oklch(0.92 0.01 255);
+  --ring: oklch(0.52 0.19 265);
+
+  /* Suitability palette — shared by map markers, badges and the legend. */
+  --suit-high: oklch(0.63 0.16 155);
+  --suit-moderate: oklch(0.68 0.14 235);
+  --suit-low: oklch(0.75 0.15 75);
+  --suit-none: oklch(0.6 0.2 25);
+  --suit-excluded: oklch(0.62 0.02 260);
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+.dark {
+  --background: oklch(0.19 0.025 260);
+  --foreground: oklch(0.96 0.005 250);
+  --card: oklch(0.235 0.028 261);
+  --card-foreground: oklch(0.96 0.005 250);
+  --popover: oklch(0.235 0.028 261);
+  --popover-foreground: oklch(0.96 0.005 250);
+  --primary: oklch(0.72 0.15 268);
+  --primary-foreground: oklch(0.18 0.03 262);
+  --secondary: oklch(0.29 0.03 261);
+  --secondary-foreground: oklch(0.96 0.005 250);
+  --muted: oklch(0.29 0.03 261);
+  --muted-foreground: oklch(0.7 0.02 258);
+  --accent: oklch(0.32 0.04 264);
+  --accent-foreground: oklch(0.96 0.005 250);
+  --destructive: oklch(0.66 0.2 25);
+  --destructive-foreground: oklch(0.18 0.03 262);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.62 0.14 268);
+
+  --suit-high: oklch(0.72 0.17 152);
+  --suit-moderate: oklch(0.72 0.14 232);
+  --suit-low: oklch(0.8 0.15 78);
+  --suit-none: oklch(0.68 0.2 24);
+  --suit-excluded: oklch(0.6 0.02 260);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-suit-high: var(--suit-high);
+  --color-suit-moderate: var(--suit-moderate);
+  --color-suit-low: var(--suit-low);
+  --color-suit-none: var(--suit-none);
+  --color-suit-excluded: var(--suit-excluded);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --animate-fade-in: fade-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-rise-in: rise-in 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-slide-in: slide-in 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-pulse-ring: pulse-ring 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes slide-in {
+    from {
+      opacity: 0;
+      transform: translateX(18px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  @keyframes pulse-ring {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 0.55;
+    }
+    50% {
+      transform: scale(1.7);
+      opacity: 0;
+    }
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family:
+      ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior: none;
+  }
+
+  /* Numeric readouts line up column-wise in the score tables. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--foreground) 18%, transparent);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--foreground) 32%, transparent);
+    background-clip: content-box;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  MapLibre overrides — keep native chrome consistent with the theme  */
+/* ------------------------------------------------------------------ */
+
+.maplibregl-map {
+  font: inherit;
+}
+
+.maplibregl-ctrl-attrib.maplibregl-compact {
+  background: color-mix(in oklab, var(--card) 88%, transparent);
+  color: var(--muted-foreground);
+  border-radius: 999px;
+  backdrop-filter: blur(8px);
+}
+
+.maplibregl-ctrl-attrib a {
+  color: var(--muted-foreground);
+}
+
+.maplibregl-popup-content {
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  border-radius: var(--radius) !important;
+}
+
+.maplibregl-popup-tip {
+  display: none !important;
+}
+
+.maplibregl-canvas:focus {
+  outline: none;
 }
