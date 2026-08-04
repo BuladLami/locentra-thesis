@@ -21,7 +21,10 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
 
-    "baseUrl": ".",
+    // No "baseUrl": since TS 5.0 `paths` resolves relative to the tsconfig that
+    // declares it, and baseUrl is slated for removal in TS 7. Keep this alias in
+    // step with `resolve.alias` in vite.config.ts — tsc only typechecks it,
+    // Vite is what actually rewrites the import.
     "paths": {
       "@/*": ["./src/*"]
     }

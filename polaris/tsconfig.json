@@ -4,8 +4,11 @@
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }
   ],
+  // Solution-style config: "files": [] means nothing compiles here, so these
+  // options do not reach the referenced projects — tsconfig.app.json carries its
+  // own copy. The alias is repeated only because the shadcn/ui CLI reads paths
+  // from tsconfig.json to resolve the "@/…" entries in components.json.
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     }
