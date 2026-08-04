@@ -1,78 +1,51 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/AppHeader";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DatasetInfoDialog } from "@/components/DatasetInfoDialog";
 import { EvaluationPanel } from "@/components/EvaluationPanel";
 import { MapLegend } from "@/components/MapLegend";
-import {
-  RecommendationsPanel,
-  type RecommendationSummary,
-} from "@/components/RecommendationsPanel";
+import { RecommendationsPanel } from "@/components/RecommendationsPanel";
 import { ScoreGuideDialog } from "@/components/ScoreGuideDialog";
 import { SearchPanel } from "@/components/SearchPanel";
 import { SiteDetailsDialog } from "@/components/SiteDetailsDialog";
-import { SuitabilityMap } from "@/components/SuitabilityMap";
+import { FatalError, Splash } from "@/components/StatusScreens";
+import {
+  DEFAULT_ZOOM,
+  SuitabilityMap,
+  TALOMO_CENTRE,
+} from "@/components/SuitabilityMap";
 import { WelcomeScreen } from "@/components/WelcomeScreen";
-import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { MapRef } from "@/components/ui/map";
+import { usePolarisData } from "@/hooks/use-polaris-data";
+import { useRecommendationSearch } from "@/hooks/use-recommendation-search";
+import { useSiteEvaluation } from "@/hooks/use-site-evaluation";
 import { useTheme } from "@/hooks/use-theme";
+import { boundsOfSites } from "@/lib/geo";
 import {
-  loadBundle,
-  reloadBundle,
-  type PolarisBundle,
-} from "@/lib/dataset";
-import {
-  boundsOfSites,
-  findNearestSite,
-  isInsideBounds,
-  sitesWithinRadius,
-} from "@/lib/geo";
+  MAX_RADIUS_M,
+  MAX_TOP_N,
+  MIN_RADIUS_M,
+  MIN_TOP_N,
+} from "@/lib/search";
 import { isShorelineExcluded } from "@/lib/suitability";
-import type {
-  AppMode,
-  EvaluationResult,
-  RankedSite,
-  Site,
-  TopRecommendation,
-} from "@/types/polaris";
+import type { AppMode, Site, TopRecommendation } from "@/types/polaris";
 
-const MIN_RADIUS_M = 100;
-const MAX_RADIUS_M = 5000;
-const DEFAULT_RADIUS_M = "750";
-/** A click farther than this from any scored site is off-grid (sea / outside). */
-const OFF_GRID_M = 1000;
-
+/**
+ * Composition root.
+ *
+ * All behaviour lives elsewhere — `lib/search.ts` holds the rules, the hooks in
+ * `hooks/` hold the state, and `components/` hold the views. This file only
+ * wires them together and lays them out, so a change to how ranking works is
+ * never a change to this file.
+ */
 export default function App() {
   const { theme, toggleTheme } = useTheme();
   const mapRef = useRef<MapRef | null>(null);
 
-  /* ---- Load-once data ------------------------------------------------ */
-  const [bundle, setBundle] = useState<PolarisBundle | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-    loadBundle()
-      .then((b) => alive && setBundle(b))
-      .catch((err: Error) => alive && setLoadError(err.message));
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  /** The only path that re-reads the dataset. Explicitly user-initiated. */
-  const handleRefresh = useCallback(() => {
-    setRefreshing(true);
-    setLoadError(null);
-    reloadBundle()
-      .then(setBundle)
-      .catch((err: Error) => setLoadError(err.message))
-      .finally(() => setRefreshing(false));
-  }, []);
+  const { bundle, loadError, refreshing, refresh } = usePolarisData();
 
   /* ---- Shell state --------------------------------------------------- */
   const [showWelcome, setShowWelcome] = useState(true);
@@ -80,86 +53,31 @@ export default function App() {
   const [scoreGuideOpen, setScoreGuideOpen] = useState(false);
   const [datasetInfoOpen, setDatasetInfoOpen] = useState(false);
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
-  const [showShorelineBuffer, setShowShorelineBuffer] = useState(true);
-  const [showAllSites, setShowAllSites] = useState(true);
+  /** Mode the user asked for, held until they confirm discarding the current one. */
+  const [pendingMode, setPendingMode] = useState<AppMode | null>(null);
+  // Both overlays start off, so the map opens on the basemap and the district
+  // outline. The 3,000-dot layer and the shoreline band are opt-in from the
+  // legend rather than a wall of colour on first paint.
+  const [showShorelineBuffer, setShowShorelineBuffer] = useState(false);
+  const [showAllSites, setShowAllSites] = useState(false);
 
-  /* ---- Recommendation state (kept independent of evaluation) --------- */
-  const [searchLat, setSearchLat] = useState("");
-  const [searchLon, setSearchLon] = useState("");
-  const [searchRadius, setSearchRadius] = useState(DEFAULT_RADIUS_M);
-  const [results, setResults] = useState<RankedSite[]>([]);
-  const [summary, setSummary] = useState<RecommendationSummary | null>(null);
-  const [searchError, setSearchError] = useState<string | null>(null);
-
-  /* ---- Evaluation state ---------------------------------------------- */
-  const [evalLat, setEvalLat] = useState("");
-  const [evalLon, setEvalLon] = useState("");
-  const [evalResult, setEvalResult] = useState<EvaluationResult | null>(null);
-  const [evalError, setEvalError] = useState<string | null>(null);
-
-  /* ---- Derived ------------------------------------------------------- */
+  /* ---- Dataset-derived ----------------------------------------------- */
   const metadata = bundle?.dataset.metadata ?? null;
   const sites = useMemo(() => bundle?.dataset.sites ?? [], [bundle]);
   const bufferM = metadata?.shoreline_buffer_m ?? 50;
-  const topN = metadata?.top_n_recommendations ?? 3;
+  const bounds = useMemo(() => boundsOfSites(sites), [sites]);
 
   const siteIndex = useMemo(
     () => new Map(sites.map((s) => [s.site_id, s])),
     [sites],
   );
 
-  const bounds = useMemo(() => boundsOfSites(sites), [sites]);
-
   const excludedCount = useMemo(
     () => sites.filter((s) => isShorelineExcluded(s, bufferM)).length,
     [sites, bufferM],
   );
 
-  const searchCentre = useMemo(() => {
-    const lat = Number.parseFloat(searchLat);
-    const lon = Number.parseFloat(searchLon);
-    return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
-  }, [searchLat, searchLon]);
-
-  const evalPoint = useMemo(() => {
-    const lat = Number.parseFloat(evalLat);
-    const lon = Number.parseFloat(evalLon);
-    return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
-  }, [evalLat, evalLon]);
-
-  /**
-   * Markers on the map: the district-wide top three until a search narrows
-   * things down, then the top three inside that search. Never more than N —
-   * panel revision #4.
-   */
-  const mapRecommendations = useMemo<TopRecommendation[]>(() => {
-    if (mode !== "recommendation") return [];
-    if (results.length > 0) {
-      return results.slice(0, topN).map((site, i) => ({
-        recommendation_rank: i + 1,
-        site_id: site.site_id,
-        score: site.score,
-        suitability_class: site.suitability_class,
-        latitude: site.latitude,
-        longitude: site.longitude,
-        barangay: site.barangay,
-        interpretation: site.interpretation,
-      }));
-    }
-    return (bundle?.dataset.top_recommendations ?? []).slice(0, topN);
-  }, [mode, results, topN, bundle]);
-
-  const selectedSite: Site | null = selectedSiteId
-    ? (siteIndex.get(selectedSiteId) ?? null)
-    : null;
-
-  const selectedRank = useMemo(() => {
-    if (!selectedSiteId) return undefined;
-    const hit = mapRecommendations.find((r) => r.site_id === selectedSiteId);
-    return hit?.recommendation_rank;
-  }, [selectedSiteId, mapRecommendations]);
-
-  /* ---- Map helpers --------------------------------------------------- */
+  /* ---- Map navigation ------------------------------------------------ */
   const flyTo = useCallback((lat: number, lon: number, zoom = 15) => {
     mapRef.current?.flyTo({
       center: [lon, lat],
@@ -169,175 +87,137 @@ export default function App() {
     });
   }, []);
 
-  const validatePoint = useCallback(
-    (lat: number, lon: number): string | null => {
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-        return "Enter a valid latitude and longitude, or click the map.";
-      }
-      if (bounds && !isInsideBounds(lat, lon, bounds, 0.01)) {
-        return "That point is outside Talomo District. Pick a location inside the mapped study area.";
-      }
-      const nearest = findNearestSite(sites, lat, lon);
-      if (!nearest || nearest.distanceM > OFF_GRID_M) {
-        return "No analysed site lies near that point — it is likely offshore or outside the candidate grid. Pick a location on land within the district.";
-      }
-      return null;
-    },
-    [bounds, sites],
-  );
-
-  /* ---- Recommendation run (the only place ranking happens) ----------- */
-  const runRecommendation = useCallback(() => {
-    const lat = Number.parseFloat(searchLat);
-    const lon = Number.parseFloat(searchLon);
-    const radius = Number.parseFloat(searchRadius);
-
-    const pointError = validatePoint(lat, lon);
-    if (pointError) {
-      setSearchError(pointError);
-      return;
-    }
-    if (
-      !Number.isFinite(radius) ||
-      radius < MIN_RADIUS_M ||
-      radius > MAX_RADIUS_M
-    ) {
-      setSearchError(
-        `Enter a search radius between ${MIN_RADIUS_M} and ${MAX_RADIUS_M.toLocaleString()} metres.`,
-      );
-      return;
-    }
-
-    const inRadius = sitesWithinRadius(sites, lat, lon, radius);
-
-    const shorelineExcluded = inRadius.filter(({ site }) =>
-      isShorelineExcluded(site, bufferM),
-    ).length;
-    const hazardExcluded = inRadius.filter(
-      ({ site }) =>
-        !site.recommendation_eligible && !isShorelineExcluded(site, bufferM),
-    ).length;
-
-    const ranked: RankedSite[] = inRadius
-      .filter(({ site }) => site.recommendation_eligible)
-      .sort((a, b) => b.site.score - a.site.score)
-      .slice(0, topN)
-      .map(({ site, distanceM }, i) => ({
-        ...site,
-        localRank: i + 1,
-        distanceFromCentreM: distanceM,
-      }));
-
-    setSearchError(null);
-    setResults(ranked);
-    setSummary({
-      inRadius: inRadius.length,
-      shorelineExcluded,
-      hazardExcluded,
-    });
-
-    if (ranked.length > 0) {
-      flyTo(lat, lon, radius <= 400 ? 16 : radius <= 1200 ? 14.6 : 13.4);
-    }
-  }, [
-    searchLat,
-    searchLon,
-    searchRadius,
+  /* ---- Mode state (independent, so switching loses nothing) ---------- */
+  const search = useRecommendationSearch({
     sites,
+    bounds,
     bufferM,
-    topN,
-    validatePoint,
+    datasetTopN: metadata?.top_n_recommendations,
     flyTo,
-  ]);
+  });
+  const evaluation = useSiteEvaluation({ sites, bounds });
 
-  const runEvaluation = useCallback(
-    (lat: number, lon: number) => {
-      const pointError = validatePoint(lat, lon);
-      if (pointError) {
-        setEvalError(pointError);
-        setEvalResult(null);
-        return;
-      }
+  const isRecommendation = mode === "recommendation";
 
-      const nearest = findNearestSite(sites, lat, lon);
-      if (!nearest) {
-        setEvalError("No analysed sites are loaded.");
-        setEvalResult(null);
-        return;
-      }
+  /* ---- View models --------------------------------------------------- */
 
-      setEvalError(null);
-      setEvalResult({
-        latitude: lat,
-        longitude: lon,
-        site: nearest.site,
-        distanceM: nearest.distanceM,
-        outsideCoverage: nearest.distanceM > 250,
-      });
-    },
-    [sites, validatePoint],
+  /**
+   * Numbered markers on the map — only ever the result of an explicit search.
+   * There is deliberately no district-wide default list: a shortlist the user
+   * did not ask for reads as a recommendation the tool is making on its own.
+   */
+  const mapRecommendations = useMemo<TopRecommendation[]>(() => {
+    if (!isRecommendation || search.results.length === 0) return [];
+
+    return search.results.slice(0, search.topN).map((site, i) => ({
+      recommendation_rank: i + 1,
+      site_id: site.site_id,
+      score: site.score,
+      suitability_class: site.suitability_class,
+      latitude: site.latitude,
+      longitude: site.longitude,
+      barangay: site.barangay,
+      interpretation: site.interpretation,
+    }));
+  }, [isRecommendation, search.results, search.topN]);
+
+  const selectedSite: Site | null = selectedSiteId
+    ? (siteIndex.get(selectedSiteId) ?? null)
+    : null;
+
+  const selectedRank = useMemo(
+    () =>
+      mapRecommendations.find((r) => r.site_id === selectedSiteId)
+        ?.recommendation_rank,
+    [selectedSiteId, mapRecommendations],
   );
 
-  /* ---- Map interactions ---------------------------------------------- */
+  /* ---- Interaction routing ------------------------------------------- */
+  const { setCentre } = search;
+  const { evaluatePoint } = evaluation;
+
   const handlePickLocation = useCallback(
     (lat: number, lon: number) => {
-      if (mode === "recommendation") {
-        setSearchLat(lat.toFixed(6));
-        setSearchLon(lon.toFixed(6));
-        setSearchError(null);
-        // Stale results must never outlive the query that produced them.
-        setResults([]);
-        setSummary(null);
-      } else {
-        setEvalLat(lat.toFixed(6));
-        setEvalLon(lon.toFixed(6));
-        runEvaluation(lat, lon);
-      }
+      if (isRecommendation) setCentre(lat, lon);
+      else evaluatePoint(lat, lon);
     },
-    [mode, runEvaluation],
+    [isRecommendation, setCentre, evaluatePoint],
   );
 
-  const handleSelectSite = useCallback((siteId: string) => {
-    setSelectedSiteId(siteId);
-  }, []);
+  const clearActiveMode = isRecommendation ? search.clear : evaluation.clear;
 
-  const handleClearPoint = useCallback(() => {
-    if (mode === "recommendation") {
-      setSearchLat("");
-      setSearchLon("");
-      setResults([]);
-      setSummary(null);
-      setSearchError(null);
-    } else {
-      setEvalLat("");
-      setEvalLon("");
-      setEvalResult(null);
-      setEvalError(null);
-    }
-  }, [mode]);
-
-  const handleExit = useCallback(() => {
-    setShowWelcome(true);
+  /**
+   * Clears the current query and returns the map to its opening view. In
+   * recommendation mode this removes the search centre, the radius ring and
+   * the shortlist together — they only ever make sense as a set.
+   */
+  const handleClear = useCallback(() => {
+    clearActiveMode();
     setSelectedSiteId(null);
-  }, []);
+    flyTo(TALOMO_CENTRE[1], TALOMO_CENTRE[0], DEFAULT_ZOOM);
+  }, [clearActiveMode, flyTo]);
 
-  const handleRunFromPanel = useCallback(() => {
-    if (mode === "recommendation") {
-      runRecommendation();
-    } else {
-      runEvaluation(Number.parseFloat(evalLat), Number.parseFloat(evalLon));
-    }
-  }, [mode, runRecommendation, runEvaluation, evalLat, evalLon]);
+  /**
+   * The header brand acts as a home link, so it returns a genuinely clean slate
+   * rather than the welcome screen with yesterday's search still behind it:
+   * both modes are cleared, not just the active one.
+   */
+  const { clear: clearSearch } = search;
+  const { clear: clearEvaluation } = evaluation;
+
+  const handleGoHome = useCallback(() => {
+    clearSearch();
+    clearEvaluation();
+    setSelectedSiteId(null);
+    setShowWelcome(true);
+    flyTo(TALOMO_CENTRE[1], TALOMO_CENTRE[0], DEFAULT_ZOOM);
+  }, [clearSearch, clearEvaluation, flyTo]);
+
+  /* ---- Mode switching ------------------------------------------------ */
+
+  /**
+   * Switching modes resets whatever the mode being left had going, so it is
+   * gated behind a confirmation — but only when there is actually something to
+   * lose. Prompting over an untouched panel trains people to dismiss dialogs
+   * without reading them.
+   */
+  const activeHasWork = isRecommendation ? search.hasWork : evaluation.hasWork;
+
+  const requestModeChange = useCallback(
+    (next: AppMode) => {
+      if (next === mode) return;
+      if (activeHasWork) setPendingMode(next);
+      else setMode(next);
+    },
+    [mode, activeHasWork],
+  );
+
+  const confirmModeChange = useCallback(() => {
+    if (!pendingMode) return;
+    clearActiveMode();
+    setSelectedSiteId(null);
+    setMode(pendingMode);
+    setPendingMode(null);
+    flyTo(TALOMO_CENTRE[1], TALOMO_CENTRE[0], DEFAULT_ZOOM);
+  }, [pendingMode, clearActiveMode, flyTo]);
+
+  const modeChangeConsequences = isRecommendation
+    ? [
+        "The search centre and its radius circle are removed from the map.",
+        "The current list of recommended sites is cleared.",
+      ]
+    : [
+        "The evaluated point is removed from the map.",
+        "Its score and explanation are cleared.",
+      ];
 
   /* ---- Render -------------------------------------------------------- */
 
   if (loadError && !bundle) {
-    return <FatalError message={loadError} onRetry={handleRefresh} />;
+    return <FatalError message={loadError} onRetry={refresh} />;
   }
 
-  if (!bundle) {
-    return <Splash />;
-  }
+  if (!bundle) return <Splash />;
 
   if (showWelcome) {
     return (
@@ -363,11 +243,11 @@ export default function App() {
       <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
         <AppHeader
           mode={mode}
-          onModeChange={setMode}
+          onModeChange={requestModeChange}
           onOpenScoreGuide={() => setScoreGuideOpen(true)}
           onOpenDatasetInfo={() => setDatasetInfoOpen(true)}
-          onRefresh={handleRefresh}
-          onExit={handleExit}
+          onRefresh={refresh}
+          onGoHome={handleGoHome}
           refreshing={refreshing}
           loadedAt={bundle.loadedAt}
           theme={theme}
@@ -382,17 +262,17 @@ export default function App() {
               theme={theme}
               mode={mode}
               sites={sites}
-              resultSites={results}
+              resultSites={search.results}
               topRecommendations={mapRecommendations}
               boundary={bundle.boundary}
               coastline={bundle.coastline}
               shorelineBufferM={bufferM}
               showShorelineBuffer={showShorelineBuffer}
               showAllSites={showAllSites}
-              searchCentre={searchCentre}
-              searchRadiusM={Number.parseFloat(searchRadius) || 0}
-              evalPoint={evalPoint}
-              onSelectSite={handleSelectSite}
+              searchCentre={search.centre}
+              searchRadiusM={Number.parseFloat(search.radiusInput) || 0}
+              evalPoint={evaluation.point}
+              onSelectSite={setSelectedSiteId}
               onPickLocation={handlePickLocation}
             />
 
@@ -415,43 +295,50 @@ export default function App() {
                 <SearchPanel
                   mode={mode}
                   barangays={bundle.barangays}
-                  latitude={mode === "recommendation" ? searchLat : evalLat}
-                  longitude={mode === "recommendation" ? searchLon : evalLon}
-                  radiusM={searchRadius}
+                  latitude={isRecommendation ? search.latitude : evaluation.latitude}
+                  longitude={
+                    isRecommendation ? search.longitude : evaluation.longitude
+                  }
+                  radiusM={search.radiusInput}
                   minRadiusM={MIN_RADIUS_M}
                   maxRadiusM={MAX_RADIUS_M}
-                  error={mode === "recommendation" ? searchError : evalError}
-                  busy={false}
-                  hasResults={results.length > 0}
+                  topN={search.topNInput}
+                  minTopN={MIN_TOP_N}
+                  maxTopN={MAX_TOP_N}
+                  error={isRecommendation ? search.error : evaluation.error}
+                  hasResults={search.results.length > 0}
                   onLatitudeChange={
-                    mode === "recommendation" ? setSearchLat : setEvalLat
+                    isRecommendation ? search.setLatitude : evaluation.setLatitude
                   }
                   onLongitudeChange={
-                    mode === "recommendation" ? setSearchLon : setEvalLon
+                    isRecommendation
+                      ? search.setLongitude
+                      : evaluation.setLongitude
                   }
-                  onRadiusChange={setSearchRadius}
-                  onRun={handleRunFromPanel}
-                  onClear={handleClearPoint}
+                  onRadiusChange={search.setRadius}
+                  onTopNChange={search.setTopN}
+                  onRun={isRecommendation ? search.run : evaluation.run}
+                  onClear={handleClear}
                   onFlyTo={flyTo}
                 />
 
                 <div className="border-t pt-4">
-                  {mode === "recommendation" ? (
+                  {isRecommendation ? (
                     <RecommendationsPanel
-                      results={results}
-                      summary={summary}
-                      topN={topN}
-                      radiusM={Number.parseFloat(searchRadius) || 0}
-                      onSelectSite={handleSelectSite}
+                      results={search.results}
+                      summary={search.summary}
+                      topN={search.topN}
+                      radiusM={Number.parseFloat(search.radiusInput) || 0}
+                      onSelectSite={setSelectedSiteId}
                       onFocusSite={(site) =>
                         flyTo(site.latitude, site.longitude, 16.5)
                       }
                     />
                   ) : (
                     <EvaluationPanel
-                      result={evalResult}
+                      result={evaluation.result}
                       metadata={metadata}
-                      onOpenDetails={handleSelectSite}
+                      onOpenDetails={setSelectedSiteId}
                     />
                   )}
                 </div>
@@ -478,47 +365,22 @@ export default function App() {
         recommendationRank={selectedRank}
         onOpenChange={(open) => !open && setSelectedSiteId(null)}
       />
+      <ConfirmDialog
+        open={pendingMode !== null}
+        onOpenChange={(open) => !open && setPendingMode(null)}
+        title={
+          pendingMode === "evaluation"
+            ? "Switch to Evaluate?"
+            : "Switch to Recommend?"
+        }
+        description={`This clears what you have done in ${
+          isRecommendation ? "Recommend" : "Evaluate"
+        } mode.`}
+        consequences={modeChangeConsequences}
+        confirmLabel="Clear and switch"
+        cancelLabel="Stay here"
+        onConfirm={confirmModeChange}
+      />
     </TooltipProvider>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-
-function Splash() {
-  return (
-    <div className="grid h-full place-items-center p-6">
-      <div className="flex flex-col items-center gap-3 text-center">
-        <Loader2 className="text-primary size-7 animate-spin" />
-        <p className="text-sm font-semibold">Loading POLARIS</p>
-        <p className="text-muted-foreground max-w-xs text-xs leading-relaxed">
-          Reading the scored candidate sites and district geometry. This happens
-          once per session.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function FatalError({
-  message,
-  onRetry,
-}: {
-  message: string;
-  onRetry: () => void;
-}) {
-  return (
-    <div className="grid h-full place-items-center p-6">
-      <div className="flex max-w-md flex-col items-center gap-3 text-center">
-        <span className="bg-destructive/10 text-destructive grid size-11 place-items-center rounded-full">
-          <AlertTriangle className="size-5" />
-        </span>
-        <p className="text-sm font-semibold">Could not load the site data</p>
-        <p className="text-muted-foreground text-xs leading-relaxed">{message}</p>
-        <Button variant="secondary" size="sm" onClick={onRetry}>
-          <RefreshCw className="size-3.5" />
-          Try again
-        </Button>
-      </div>
-    </div>
   );
 }

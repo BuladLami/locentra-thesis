@@ -24,7 +24,7 @@ export function EvaluationPanel({
       <EmptyState
         icon={<Crosshair className="size-5" />}
         title="No location evaluated yet"
-        body="Click a point on the map, or enter coordinates above, then press Evaluate. You will get one composite score and a written explanation of what drives it."
+        body="Click a point on the map, or enter coordinates above, then press Evaluate. You will get one suitability score and a written explanation of what makes it good or bad."
       />
     );
   }
@@ -39,9 +39,9 @@ export function EvaluationPanel({
       <header className="space-y-1">
         <h2 className="text-sm font-semibold">Evaluation result</h2>
         <p className="text-muted-foreground text-xs leading-relaxed">
-          Scored from the nearest analysed candidate site,{" "}
+          This is the score of the nearest site POLARIS has already scored,{" "}
           <span className="font-medium">{site.site_id}</span>, in{" "}
-          {site.barangay ?? "an unmatched barangay"} —{" "}
+          {site.barangay ?? "an unknown barangay"} —{" "}
           {formatMetres(result.distanceM)} from the point you clicked.
         </p>
       </header>
@@ -50,8 +50,8 @@ export function EvaluationPanel({
         <p className="border-suit-low/60 bg-suit-low/10 flex items-start gap-2 rounded-lg border-l-2 p-2.5 text-xs leading-relaxed">
           <TriangleAlert className="text-suit-low mt-px size-3.5 shrink-0" />
           <span>
-            The nearest analysed site is {formatMetres(result.distanceM)} away.
-            Read this score as indicative of the surrounding area rather than of
+            The nearest scored site is {formatMetres(result.distanceM)} away, so
+            treat this score as a guide to the surrounding area rather than to
             that exact point.
           </span>
         </p>
@@ -66,16 +66,16 @@ export function EvaluationPanel({
       <section className="bg-muted/50 rounded-lg border p-3">
         <h3 className="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs font-semibold tracking-widest uppercase">
           <Info className="size-3" />
-          Interpretation
+          What this means
         </h3>
         <p className="text-sm leading-relaxed">{site.interpretation}</p>
       </section>
 
       {!site.recommendation_eligible && reason && (
         <p className="border-destructive/50 bg-destructive/10 rounded-lg border-l-2 p-2.5 text-xs leading-relaxed">
-          <strong className="text-destructive">Not recommendable.</strong>{" "}
-          {reason}. POLARIS will never place this location on a recommendation
-          list, whatever its score.
+          <strong className="text-destructive">Cannot be recommended.</strong>{" "}
+          {reason}. POLARIS will never put this location on a recommendation
+          list, however high its score.
         </p>
       )}
 

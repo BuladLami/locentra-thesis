@@ -39,10 +39,10 @@ export function DatasetInfoDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Model and dataset</DialogTitle>
+          <DialogTitle>Where the data comes from</DialogTitle>
           <DialogDescription>
-            {metadata.study_area} — what was extracted, what was scored, and how
-            the score is built.
+            {metadata.study_area} — what was gathered, what was scored, and how
+            the score is put together.
           </DialogDescription>
         </DialogHeader>
 
@@ -50,12 +50,12 @@ export function DatasetInfoDialog({
           {/* ---- Revision #6: the two counts are different things ---- */}
           <section className="space-y-3">
             <SectionTitle icon={<Database className="size-4" />}>
-              Dataset size — two different quantities
+              Two numbers that are often mixed up
             </SectionTitle>
 
             <div className="grid gap-3 sm:grid-cols-2">
               <StatCard
-                label="Raw OpenStreetMap records extracted"
+                label="Map records collected"
                 value={
                   rawRecords !== null
                     ? rawRecords.toLocaleString()
@@ -63,14 +63,14 @@ export function DatasetInfoDialog({
                 }
                 caveat={
                   rawRecords !== null
-                    ? "Building footprints + road nodes + road edges + facilities"
-                    : "Manuscript figure. The revised training pipeline prints the exact count at run time; this migrated dataset does not carry it."
+                    ? "Buildings, roads and existing health facilities across the district."
+                    : "Figure quoted in the paper. The current data file does not record the exact count."
                 }
               />
               <StatCard
-                label="Candidate sites entering the model"
+                label="Candidate sites actually scored"
                 value={clarification.training_candidate_sites.toLocaleString()}
-                caveat={`Grid points scored inside the district boundary. ${siteCount.toLocaleString()} are loaded in this session.`}
+                caveat={`Points spread evenly across the district. ${siteCount.toLocaleString()} of them are loaded right now.`}
                 emphasis
               />
             </div>
@@ -85,7 +85,7 @@ export function DatasetInfoDialog({
           {/* ---- Revision #1 + #8: single Random Forest, hazard intrinsic ---- */}
           <section className="space-y-3">
             <SectionTitle icon={<TreePine className="size-4" />}>
-              Model
+              How the score is produced
             </SectionTitle>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -94,7 +94,7 @@ export function DatasetInfoDialog({
               </Badge>
               {metadata.model_status === "provisional" && (
                 <Badge variant="outline" className="text-suit-low text-xs">
-                  Provisional dataset
+                  Provisional data — figures may still change
                 </Badge>
               )}
             </div>
@@ -106,11 +106,12 @@ export function DatasetInfoDialog({
             )}
 
             <p className="text-muted-foreground text-xs leading-relaxed">
-              There is exactly one model configuration. The pre-defense
-              &ldquo;with hazard / without hazard&rdquo; pair was removed: a
-              hazardous site should not be recommended at all, so hazard is an
-              intrinsic, non-optional penalty inside every score rather than a
-              toggle that could be switched off to obtain a flattering number.
+              Every site is scored the same way — there is only one version of
+              the score. An earlier draft offered a second score that ignored
+              flood, landslide and storm surge risk, and that has been removed. A
+              hazardous site should not be recommended at all, so hazard risk is
+              now built into every score and cannot be switched off to make a
+              site look better than it is.
             </p>
           </section>
 
@@ -119,12 +120,12 @@ export function DatasetInfoDialog({
           {/* ---- Weights ---- */}
           <section className="space-y-3">
             <SectionTitle icon={<MapPinned className="size-4" />}>
-              Composite score weighting
+              How much each factor counts
             </SectionTitle>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <WeightList
-                heading="Service factors (added)"
+                heading="Adds to the score"
                 total={0.8}
                 entries={Object.entries(metadata.weights.service).map(
                   ([key, value]) => ({
@@ -134,7 +135,7 @@ export function DatasetInfoDialog({
                 )}
               />
               <WeightList
-                heading="Hazard penalties (subtracted)"
+                heading="Takes away from the score"
                 total={0.2}
                 entries={Object.entries(metadata.weights.hazard_penalty).map(
                   ([key, value]) => ({
@@ -152,39 +153,40 @@ export function DatasetInfoDialog({
           {/* ---- Revision #2: shoreline buffer ---- */}
           <section className="space-y-2">
             <SectionTitle icon={<Waves className="size-4" />}>
-              Hard constraints
+              Rules that rule a site out
             </SectionTitle>
             <ul className="text-muted-foreground space-y-1.5 text-xs leading-relaxed">
               <li>
                 <strong className="text-foreground">
-                  {metadata.shoreline_buffer_m} m shoreline setback.
+                  Nothing within {metadata.shoreline_buffer_m} m of the shoreline.
                 </strong>{" "}
-                Distance to the OpenStreetMap coastline is measured for every
-                site. {clarification.shoreline_excluded_sites.toLocaleString()}{" "}
-                site
-                {clarification.shoreline_excluded_sites === 1 ? "" : "s"} fall
-                inside the buffer and can never be recommended. Toggle the band
-                on the map to see it.
-              </li>
-              <li>
-                <strong className="text-foreground">Hazard eligibility gate.</strong>{" "}
-                Any site rated High on flood, landslide or storm surge
-                susceptibility is excluded from the recommendation list
-                regardless of its numeric score.
+                The distance to the shoreline is measured for every site.{" "}
+                {clarification.shoreline_excluded_sites.toLocaleString()} site
+                {clarification.shoreline_excluded_sites === 1 ? " is" : "s are"}{" "}
+                too close and can never be recommended. You can switch this band
+                on and off in the map key.
               </li>
               <li>
                 <strong className="text-foreground">
-                  Top {metadata.top_n_recommendations} only.
+                  Nothing rated High on a hazard.
                 </strong>{" "}
-                The recommendation list is capped so a non-technical reviewer is
-                not handed thousands of near-identical options.
+                Any site rated High for flood, landslide or storm surge is kept
+                off the recommendation list, no matter how good its score is.
+              </li>
+              <li>
+                <strong className="text-foreground">
+                  Only the top {metadata.top_n_recommendations}.
+                </strong>{" "}
+                You get a short list instead of thousands of near-identical
+                options to sift through.
               </li>
             </ul>
           </section>
 
           {metadata.generated_at && (
             <p className="text-muted-foreground text-[11px]">
-              Dataset generated {new Date(metadata.generated_at).toLocaleString()}
+              This data was prepared{" "}
+              {new Date(metadata.generated_at).toLocaleString()}
               {metadata.generated_by ? ` by ${metadata.generated_by}` : ""}.
             </p>
           )}

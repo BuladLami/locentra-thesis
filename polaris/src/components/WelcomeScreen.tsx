@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowRight, Compass, Crosshair, TreePine } from "lucide-react";
+import { ArrowRight, Compass, Crosshair, MapPin } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,14 +19,14 @@ const MODE_CARDS: {
     id: "recommendation",
     title: "Recommend sites",
     description:
-      "Pick a search area and get the three best eligible sites inside it, each with a written justification.",
+      "Pick a search area and get the three best sites inside it, each with a written explanation of why.",
     icon: Compass,
   },
   {
     id: "evaluation",
     title: "Evaluate a location",
     description:
-      "Click any point in the district and read its composite suitability score and what drives it.",
+      "Click any point in the district and read its suitability score and what makes it good or bad.",
     icon: Crosshair,
   },
 ];
@@ -50,10 +50,7 @@ export function WelcomeScreen({
         <header className="animate-rise-in space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="secondary" className="gap-1.5">
-              <TreePine className="size-3" />
-              Random Forest decision support
-            </Badge>
-            <Badge variant="muted">
+              <MapPin className="size-3" />
               {metadata?.study_area ?? "Talomo District, Davao City"}
             </Badge>
           </div>
@@ -62,13 +59,13 @@ export function WelcomeScreen({
             POLARIS
           </h1>
           <p className="text-muted-foreground max-w-2xl text-sm leading-relaxed sm:text-base">
-            Priority-Optimized Location and Risk-Adaptive Infrastructure Siting —
-            a decision-support prototype that scores{" "}
+            A map-based tool for deciding where to put a new health facility. It
+            has already scored{" "}
             <strong className="text-foreground">
               {siteCount.toLocaleString()}
             </strong>{" "}
-            candidate health-facility sites across the district on one composite
-            suitability scale.
+            possible sites across the district from 0 to 1, so you can see at a
+            glance which ones are worth considering.
           </p>
         </header>
 
@@ -79,10 +76,10 @@ export function WelcomeScreen({
         >
           <div className="space-y-1">
             <h2 className="text-lg font-semibold tracking-tight">
-              Read this first: how the scores work
+              Read this first: what the scores mean
             </h2>
             <p className="text-muted-foreground text-sm">
-              Four things to know before you look at a single site.
+              Four things worth knowing before you look at any site.
             </p>
           </div>
           <ScoreGuideBody thresholds={thresholds} compact />
@@ -142,7 +139,7 @@ export function WelcomeScreen({
             </Button>
             {!selected && (
               <p className="text-muted-foreground text-xs">
-                Choose a mode to continue.
+                Choose one of the two options above to continue.
               </p>
             )}
           </div>
@@ -151,7 +148,7 @@ export function WelcomeScreen({
         <footer className="text-muted-foreground border-t pt-5 text-xs leading-relaxed">
           <p>
             {metadata?.advisory_note ??
-              "POLARIS is an advisory decision-support tool; final siting decisions remain with planning officers."}
+              "POLARIS is only a guide. The final decision on where to build a health facility still rests with the planning officers."}
           </p>
           <p className="mt-1">
             University of the Immaculate Conception — College of Computer

@@ -98,7 +98,3 @@ export function isInsideBounds(
     lat <= b.north + padDeg
   );
 }
-
-export function formatCoord(value: number): string {
-  return value.toFixed(6);
-}

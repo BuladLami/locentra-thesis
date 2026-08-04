@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AlertCircle, Locate, Search, Trash2, X } from "lucide-react";
+import { AlertCircle, Locate, RotateCcw, Search, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,12 +15,15 @@ export interface SearchPanelProps {
   radiusM: string;
   minRadiusM: number;
   maxRadiusM: number;
+  topN: string;
+  minTopN: number;
+  maxTopN: number;
   error: string | null;
-  busy: boolean;
   hasResults: boolean;
   onLatitudeChange: (value: string) => void;
   onLongitudeChange: (value: string) => void;
   onRadiusChange: (value: string) => void;
+  onTopNChange: (value: string) => void;
   onRun: () => void;
   onClear: () => void;
   onFlyTo: (lat: number, lon: number, zoom: number) => void;
@@ -34,18 +37,24 @@ export function SearchPanel({
   radiusM,
   minRadiusM,
   maxRadiusM,
+  topN,
+  minTopN,
+  maxTopN,
   error,
-  busy,
   hasResults,
   onLatitudeChange,
   onLongitudeChange,
   onRadiusChange,
+  onTopNChange,
   onRun,
   onClear,
   onFlyTo,
 }: SearchPanelProps) {
   const isRecommendation = mode === "recommendation";
   const hasPoint = latitude.trim() !== "" && longitude.trim() !== "";
+  // Falls back while the field is empty or mid-edit, so the button never
+  // renders "Find the top  sites".
+  const shortlistSize = Number.parseInt(topN, 10) || minTopN;
 
   return (
     <section className="space-y-3">
@@ -88,16 +97,28 @@ export function SearchPanel({
         </div>
 
         {isRecommendation && (
-          <LabelledInput
-            label={`Search radius (metres, ${minRadiusM}–${maxRadiusM.toLocaleString()})`}
-            value={radiusM}
-            placeholder="500"
-            type="number"
-            min={minRadiusM}
-            max={maxRadiusM}
-            step={50}
-            onChange={onRadiusChange}
-          />
+          <div className="grid grid-cols-2 gap-2">
+            <LabelledInput
+              label={`Radius in metres (${minRadiusM}–${maxRadiusM.toLocaleString()})`}
+              value={radiusM}
+              placeholder="500"
+              type="number"
+              min={minRadiusM}
+              max={maxRadiusM}
+              step={50}
+              onChange={onRadiusChange}
+            />
+            <LabelledInput
+              label={`Sites to show (${minTopN}–${maxTopN})`}
+              value={topN}
+              placeholder={String(minTopN)}
+              type="number"
+              min={minTopN}
+              max={maxTopN}
+              step={1}
+              onChange={onTopNChange}
+            />
+          </div>
         )}
       </div>
 
@@ -111,24 +132,37 @@ export function SearchPanel({
         </p>
       )}
 
-      <Button className="w-full" onClick={onRun} disabled={busy}>
-        {isRecommendation ? (
-          <>
-            <Search className="size-4" />
-            {hasResults ? "Update recommendations" : "Find the top three sites"}
-          </>
-        ) : (
-          <>
-            <Locate className="size-4" />
-            Evaluate this location
-          </>
-        )}
-      </Button>
+      {/* Once a shortlist exists the primary action becomes destructive: it
+          tears down the search centre, the radius ring and the results, and
+          returns the map to its opening view. */}
+      {isRecommendation && hasResults ? (
+        <Button className="w-full" variant="destructive" onClick={onClear}>
+          <RotateCcw className="size-4" />
+          Clear search and reset map
+        </Button>
+      ) : (
+        <Button className="w-full" onClick={onRun}>
+          {isRecommendation ? (
+            <>
+              <Search className="size-4" />
+              Find the top {shortlistSize}{" "}
+              {shortlistSize === 1 ? "site" : "sites"}
+            </>
+          ) : (
+            <>
+              <Locate className="size-4" />
+              Evaluate this location
+            </>
+          )}
+        </Button>
+      )}
 
       <p className="text-muted-foreground text-[11px] leading-relaxed">
-        {isRecommendation
-          ? "Ranking runs only when you press this button — nothing recalculates while you pan or zoom."
-          : "Clicking a point on the map evaluates it straight away. Nothing recalculates while you pan or zoom."}
+        {!isRecommendation
+          ? "Clicking a point on the map evaluates it straight away. Moving or zooming the map changes nothing."
+          : hasResults
+            ? "Clearing removes the search centre, its radius circle and the results, then zooms back out to the whole district."
+            : "Nothing is worked out until you press this button. Moving or zooming the map changes nothing."}
       </p>
     </section>
   );

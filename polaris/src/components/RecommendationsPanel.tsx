@@ -5,16 +5,7 @@ import { Button } from "@/components/ui/button";
 import { SuitabilityBadge } from "@/components/ScoreDisplay";
 import { formatMetres, formatScore } from "@/lib/suitability";
 import { cn } from "@/lib/utils";
-import type { RankedSite } from "@/types/polaris";
-
-export interface RecommendationSummary {
-  /** Sites inside the search radius, before any gate. */
-  inRadius: number;
-  /** Removed for sitting inside the shoreline setback. */
-  shorelineExcluded: number;
-  /** Removed for carrying a High hazard rating. */
-  hazardExcluded: number;
-}
+import type { RankedSite, RecommendationSummary } from "@/types/polaris";
 
 export function RecommendationsPanel({
   results,
@@ -36,7 +27,7 @@ export function RecommendationsPanel({
       <EmptyState
         icon={<MapPinned className="size-5" />}
         title="No search yet"
-        body="Place a search centre on the map and press the button above. POLARIS will rank every candidate site inside the radius and surface the best three."
+        body="Place a search centre on the map and press the button above. POLARIS will rank every site inside the radius and give you the best three."
       />
     );
   }
@@ -46,10 +37,10 @@ export function RecommendationsPanel({
       <div className="space-y-3">
         <EmptyState
           icon={<SearchX className="size-5" />}
-          title="No eligible sites in this area"
-          body={`${summary.inRadius.toLocaleString()} candidate site${
+          title="No usable sites in this area"
+          body={`${summary.inRadius.toLocaleString()} site${
             summary.inRadius === 1 ? "" : "s"
-          } fall inside the ${formatMetres(radiusM)} radius, but none survived the hard constraints. Try a larger radius or a different centre.`}
+          } fall inside the ${formatMetres(radiusM)} radius, but every one is ruled out — either too close to the shoreline or too hazardous. Try a larger radius or a different search centre.`}
         />
         <ExclusionSummary summary={summary} />
       </div>
@@ -69,9 +60,9 @@ export function RecommendationsPanel({
       </header>
 
       <p className="text-muted-foreground text-xs leading-relaxed">
-        Capped at {topN} so the shortlist stays reviewable. All{" "}
-        {summary.inRadius.toLocaleString()} sites in the radius were ranked;
-        these scored highest among those that passed every constraint.
+        All {summary.inRadius.toLocaleString()} sites inside the radius were
+        ranked; these scored highest among the ones that were not ruled out. The
+        list is capped at {topN} so it stays short enough to review.
       </p>
 
       <ol className="space-y-2.5">
@@ -129,7 +120,7 @@ function RecommendationCard({
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold">{site.site_id}</p>
               <p className="text-muted-foreground truncate text-xs">
-                {site.barangay ?? "Barangay unmatched"} ·{" "}
+                {site.barangay ?? "Barangay unknown"} ·{" "}
                 {formatMetres(site.distanceFromCentreM)} from centre
               </p>
             </div>
@@ -165,8 +156,8 @@ function ExclusionSummary({ summary }: { summary: RecommendationSummary }) {
   if (total === 0) {
     return (
       <p className="text-muted-foreground bg-muted/40 rounded-lg border p-2.5 text-[11px] leading-relaxed">
-        No site inside this radius was blocked by the shoreline setback or the
-        hazard gate.
+        No site inside this radius had to be ruled out — none was too close to
+        the shoreline or too hazardous.
       </p>
     );
   }
@@ -174,7 +165,7 @@ function ExclusionSummary({ summary }: { summary: RecommendationSummary }) {
   return (
     <div className="bg-muted/40 space-y-1.5 rounded-lg border p-2.5">
       <p className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">
-        Withheld from this shortlist
+        Ruled out of this list
       </p>
       {summary.shorelineExcluded > 0 && (
         <p className="flex items-start gap-1.5 text-[11px] leading-relaxed">
@@ -183,7 +174,7 @@ function ExclusionSummary({ summary }: { summary: RecommendationSummary }) {
             <Badge variant="muted" className="tabular mr-1">
               {summary.shorelineExcluded}
             </Badge>
-            inside the 50 m shoreline setback
+            within 50 m of the shoreline
           </span>
         </p>
       )}
@@ -194,7 +185,7 @@ function ExclusionSummary({ summary }: { summary: RecommendationSummary }) {
             <Badge variant="muted" className="tabular mr-1">
               {summary.hazardExcluded}
             </Badge>
-            rated High on at least one hazard
+            at High risk of flood, landslide or storm surge
           </span>
         </p>
       )}

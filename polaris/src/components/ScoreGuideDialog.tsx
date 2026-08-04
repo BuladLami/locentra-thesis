@@ -10,10 +10,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SuitabilityBadge } from "@/components/ScoreDisplay";
+import { MAX_TOP_N, MIN_TOP_N } from "@/lib/search";
 import {
   classRange,
   DEFAULT_THRESHOLDS,
-  SCORE_GUIDE_POINTS,
+  scoreGuidePoints,
   SUITABILITY_CLASSES,
   type Thresholds,
 } from "@/lib/suitability";
@@ -41,30 +42,32 @@ export function ScoreGuideDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>How to read a suitability score</DialogTitle>
+          <DialogTitle>What the scores mean</DialogTitle>
           <DialogDescription>
-            Read this once and you will not need the methodology chapter to
-            interpret any number in POLARIS.
+            Read this once and every number in POLARIS will make sense.
           </DialogDescription>
         </DialogHeader>
 
         <DialogBody className="space-y-6">
           <ScoreGuideBody thresholds={thresholds} />
 
+          {/* The dataset ships its own guide, written for the manuscript. It
+              says nothing the plain guide above does not, and it is dense, so
+              it stays folded away rather than being the first thing read. */}
           {metadata?.score_guide && (
-            <section className="space-y-2">
-              <h3 className="text-muted-foreground text-xs font-semibold tracking-widest uppercase">
-                Verbatim guide from the training pipeline
-              </h3>
-              <p className="text-muted-foreground bg-muted/50 rounded-lg border p-3 text-xs leading-relaxed">
+            <details className="group">
+              <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-xs font-semibold tracking-widest uppercase">
+                The technical version, for those who want it
+              </summary>
+              <p className="text-muted-foreground bg-muted/50 mt-2 rounded-lg border p-3 text-xs leading-relaxed">
                 {metadata.score_guide}
               </p>
-            </section>
+            </details>
           )}
 
           {metadata?.advisory_note && (
             <p className="border-primary/40 bg-primary/5 rounded-lg border-l-2 p-3 text-xs leading-relaxed">
-              <strong>Advisory use.</strong> {metadata.advisory_note}
+              <strong>A reminder.</strong> {metadata.advisory_note}
             </p>
           )}
         </DialogBody>
@@ -84,7 +87,7 @@ export function ScoreGuideBody({
   return (
     <div className="space-y-5">
       <ul className="grid gap-3 sm:grid-cols-2">
-        {SCORE_GUIDE_POINTS.map((point, i) => {
+        {scoreGuidePoints(MIN_TOP_N, MAX_TOP_N).map((point, i) => {
           const Icon = POINT_ICONS[i] ?? Compass;
           return (
             <li
@@ -108,14 +111,14 @@ export function ScoreGuideBody({
       {!compact && (
         <section className="space-y-2">
           <h3 className="text-muted-foreground text-xs font-semibold tracking-widest uppercase">
-            Classification thresholds
+            Score ranges per class
           </h3>
           <div className="overflow-hidden rounded-lg border">
             <table className="w-full text-sm">
               <thead className="bg-muted/60">
                 <tr className="text-muted-foreground text-left text-xs">
                   <th className="px-3 py-2 font-semibold">Class</th>
-                  <th className="px-3 py-2 font-semibold">Composite score</th>
+                  <th className="px-3 py-2 font-semibold">Score</th>
                   <th className="px-3 py-2 font-semibold">What it means</th>
                 </tr>
               </thead>
@@ -139,14 +142,14 @@ export function ScoreGuideBody({
         </section>
       )}
 
-      <Callout title="Reading a value like 0.007">
-        Individual factor values run in the same direction as the composite
-        score. Road accessibility is a normalized <em>inverse</em> distance to
-        the road network, so a value near <strong>0</strong> means the site is
-        among the <strong>farthest</strong> from mapped roads and therefore has{" "}
-        <strong>low</strong> accessibility. A value near <strong>1</strong>{" "}
-        means the site sits on or beside the network. A score of 0.007 is a
-        warning sign, not a rounding artefact.
+      <Callout title="What a value like 0.007 is telling you">
+        The smaller values listed under each site work the same way as the main
+        score: closer to 1 is good, closer to 0 is bad. For road access in
+        particular, a value near <strong>0</strong> means the site is among the{" "}
+        <strong>farthest</strong> from any road, so it would be{" "}
+        <strong>hard to reach</strong>. A value near <strong>1</strong> means it
+        sits right beside a road. So 0.007 is a warning sign, not a tiny
+        rounding error.
       </Callout>
     </div>
   );
@@ -154,13 +157,13 @@ export function ScoreGuideBody({
 
 const CLASS_MEANING: Record<string, string> = {
   "Highly Suitable":
-    "Strong candidate — serves a dense population, is well connected, fills a coverage gap and carries little hazard penalty.",
+    "A strong choice — plenty of people nearby, easy to reach, far from the health facilities that already exist, and low risk.",
   "Moderately Suitable":
-    "Workable, but at least one factor is compromised. Compare against the sites above it before committing.",
+    "Usable, but something about it is weak. Compare it with the better-rated spots before you decide.",
   "Low Suitability":
-    "Weak on several factors or meaningfully penalised by hazard. Site only if constrained to this area.",
+    "Weak in several ways, or fairly risky. Only choose this if you have no option outside the area.",
   "Not Suitable":
-    "Fails on the dominant factors and/or carries a heavy hazard penalty.",
+    "Poor on the things that matter most, and/or too risky to build on.",
 };
 
 function Callout({ title, children }: { title: string; children: ReactNode }) {

@@ -36,19 +36,19 @@ export function MapLegend({
   const [open, setOpen] = useState(true);
 
   return (
-    <div className="pointer-events-none absolute bottom-3 left-3 z-10 max-w-[min(17rem,calc(100%-1.5rem))]">
+    <div className="pointer-events-none absolute bottom-4 left-4 z-10 max-w-[min(24rem,calc(100%-2rem))]">
       <div className="bg-card/90 pointer-events-auto overflow-hidden rounded-xl border shadow-lg backdrop-blur-md">
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
-          className="hover:bg-accent/60 flex w-full items-center gap-2 px-3 py-2 text-left transition-colors"
+          className="hover:bg-accent/60 flex w-full items-center gap-2.5 px-4 py-3 text-left transition-colors"
         >
-          <Layers className="text-primary size-3.5 shrink-0" />
-          <span className="flex-1 text-xs font-semibold">Map key</span>
+          <Layers className="text-primary size-5 shrink-0" />
+          <span className="flex-1 text-base font-semibold">Map key</span>
           <ChevronDown
             className={cn(
-              "text-muted-foreground size-3.5 shrink-0 transition-transform duration-200",
+              "text-muted-foreground size-5 shrink-0 transition-transform duration-200",
               !open && "-rotate-90",
             )}
           />
@@ -61,20 +61,20 @@ export function MapLegend({
           )}
         >
           <div className="overflow-hidden">
-            <div className="space-y-2.5 border-t px-3 py-2.5">
+            <div className="space-y-4 border-t px-4 py-3.5">
               <div>
-                <p className="text-muted-foreground mb-1.5 text-[10px] font-semibold tracking-widest uppercase">
-                  Composite score
+                <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-widest uppercase">
+                  Suitability score
                 </p>
-                <ul className="space-y-1">
+                <ul className="space-y-1.5">
                   {SUITABILITY_CLASSES.map((cls) => (
                     <li
                       key={cls}
-                      className="flex items-center justify-between gap-2 text-[11px]"
+                      className="flex items-center justify-between gap-3 text-sm"
                     >
-                      <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="flex min-w-0 items-center gap-2">
                         <span
-                          className="size-2 shrink-0 rounded-full"
+                          className="size-2.5 shrink-0 rounded-full"
                           style={{
                             backgroundColor: `var(${CLASS_COLOR_VAR[cls]})`,
                           }}
@@ -86,21 +86,21 @@ export function MapLegend({
                       </span>
                     </li>
                   ))}
-                  <li className="flex items-center gap-1.5 text-[11px]">
-                    <span className="bg-suit-excluded size-2 shrink-0 rounded-full" />
+                  <li className="flex items-center gap-2 text-sm">
+                    <span className="bg-suit-excluded size-2.5 shrink-0 rounded-full" />
                     <span className="text-muted-foreground truncate">
-                      Excluded by shoreline setback
+                      Ruled out — within {shorelineBufferM} m of the shoreline
                     </span>
                   </li>
                 </ul>
               </div>
 
-              <p className="text-muted-foreground border-t pt-2 text-[10px] leading-relaxed">
-                Closer to 1 = more suitable. Hazard penalties are already inside
-                every score.
+              <p className="text-muted-foreground border-t pt-3 text-xs leading-relaxed">
+                The closer to 1, the better the site. Flood, landslide and storm
+                surge risk are already counted in every score.
               </p>
 
-              <div className="space-y-1.5 border-t pt-2">
+              <div className="space-y-2.5 border-t pt-3">
                 <LegendToggle
                   checked={showAllSites}
                   onChange={onToggleAllSites}
@@ -110,8 +110,8 @@ export function MapLegend({
                   checked={showShorelineBuffer}
                   onChange={onToggleShorelineBuffer}
                   label={`${shorelineBufferM} m shoreline buffer`}
-                  hint={`${excludedCount} site${excludedCount === 1 ? "" : "s"} excluded`}
-                  icon={<Waves className="size-3" />}
+                  hint={`${excludedCount} site${excludedCount === 1 ? "" : "s"} ruled out`}
+                  icon={<Waves className="size-4" />}
                 />
               </div>
             </div>
@@ -136,17 +136,17 @@ function LegendToggle({
   icon?: React.ReactNode;
 }) {
   return (
-    <label className="flex cursor-pointer items-center gap-2 text-[11px]">
+    <label className="hover:bg-accent/40 -mx-1.5 flex cursor-pointer items-center gap-2.5 rounded-md px-1.5 py-1 text-sm transition-colors">
       <input
         type="checkbox"
         checked={checked}
         onChange={onChange}
-        className="accent-primary size-3 cursor-pointer"
+        className="accent-primary size-4 shrink-0 cursor-pointer"
       />
       {icon && <span className="text-muted-foreground shrink-0">{icon}</span>}
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {hint && (
-        <span className="text-muted-foreground shrink-0 text-[10px]">{hint}</span>
+        <span className="text-muted-foreground shrink-0 text-xs">{hint}</span>
       )}
     </label>
   );

@@ -3,7 +3,6 @@ import {
   Crosshair,
   Database,
   HelpCircle,
-  LogOut,
   Moon,
   RefreshCw,
   Sun,
@@ -26,7 +25,7 @@ export interface AppHeaderProps {
   onOpenScoreGuide: () => void;
   onOpenDatasetInfo: () => void;
   onRefresh: () => void;
-  onExit: () => void;
+  onGoHome: () => void;
   refreshing: boolean;
   loadedAt: Date | null;
   theme: Theme;
@@ -39,13 +38,13 @@ const MODES: { id: AppMode; label: string; icon: typeof Compass; hint: string }[
       id: "recommendation",
       label: "Recommend",
       icon: Compass,
-      hint: "Search an area and surface the top three eligible sites.",
+      hint: "Search an area and get the three best sites inside it.",
     },
     {
       id: "evaluation",
       label: "Evaluate",
       icon: Crosshair,
-      hint: "Read the composite score for one specific location.",
+      hint: "Read the suitability score for one specific location.",
     },
   ];
 
@@ -55,7 +54,7 @@ export function AppHeader({
   onOpenScoreGuide,
   onOpenDatasetInfo,
   onRefresh,
-  onExit,
+  onGoHome,
   refreshing,
   loadedAt,
   theme,
@@ -63,25 +62,41 @@ export function AppHeader({
 }: AppHeaderProps) {
   return (
     <header className="bg-card/80 z-30 flex h-14 shrink-0 items-center gap-3 border-b px-3 backdrop-blur-md sm:px-4">
-      {/* Brand */}
-      <div className="flex min-w-0 items-center gap-2.5">
-        <span className="bg-primary text-primary-foreground grid size-8 shrink-0 place-items-center rounded-lg font-bold shadow-sm">
-          P
-        </span>
-        <div className="min-w-0 leading-tight">
-          <p className="truncate text-sm font-bold tracking-tight">POLARIS</p>
-          <p className="text-muted-foreground hidden truncate text-[10px] sm:block">
-            Health facility siting · Talomo District
-          </p>
-        </div>
-      </div>
+      {/* Brand — doubles as the home link, the way a site logo normally does. */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={onGoHome}
+            className={cn(
+              "-mx-1.5 flex min-w-0 items-center gap-2.5 rounded-lg px-1.5 py-1 text-left transition-colors",
+              "hover:bg-accent/60 focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-none",
+            )}
+          >
+            <span className="bg-primary text-primary-foreground grid size-8 shrink-0 place-items-center rounded-lg font-bold shadow-sm">
+              P
+            </span>
+            <div className="min-w-0 leading-tight">
+              <p className="truncate text-sm font-bold tracking-tight">
+                POLARIS
+              </p>
+              <p className="text-muted-foreground hidden truncate text-[10px] sm:block">
+                Health facility siting · Talomo District
+              </p>
+            </div>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>
+          Back to the start — this clears your current search
+        </TooltipContent>
+      </Tooltip>
 
       <Separator orientation="vertical" className="hidden h-7 sm:block" />
 
       {/* Mode switch */}
       <nav
         className="bg-muted/70 flex shrink-0 items-center gap-0.5 rounded-lg p-0.5"
-        aria-label="Analysis mode"
+        aria-label="Mode"
       >
         {MODES.map(({ id, label, icon: Icon, hint }) => (
           <Tooltip key={id}>
@@ -112,13 +127,13 @@ export function AppHeader({
       <div className="flex shrink-0 items-center gap-1">
         <HeaderAction
           icon={<HelpCircle className="size-4" />}
-          label="How to read scores"
+          label="What the scores mean"
           onClick={onOpenScoreGuide}
           emphasised
         />
         <HeaderAction
           icon={<Database className="size-4" />}
-          label="Model and dataset"
+          label="Where the data comes from"
           onClick={onOpenDatasetInfo}
         />
         <HeaderAction
@@ -127,8 +142,8 @@ export function AppHeader({
           }
           label={
             loadedAt
-              ? `Refresh data (loaded ${loadedAt.toLocaleTimeString()})`
-              : "Refresh data"
+              ? `Reload the data (last loaded ${loadedAt.toLocaleTimeString()})`
+              : "Reload the data"
           }
           onClick={onRefresh}
           disabled={refreshing}
@@ -139,14 +154,6 @@ export function AppHeader({
           }
           label={theme === "dark" ? "Switch to light" : "Switch to dark"}
           onClick={onToggleTheme}
-        />
-
-        <Separator orientation="vertical" className="mx-1 h-7" />
-
-        <HeaderAction
-          icon={<LogOut className="size-4" />}
-          label="Back to start"
-          onClick={onExit}
         />
       </div>
     </header>

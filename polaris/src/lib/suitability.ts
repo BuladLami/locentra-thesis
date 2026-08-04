@@ -51,16 +51,6 @@ export const CLASS_HEX: Record<
 
 export const EXCLUDED_HEX = { light: "#94a3b8", dark: "#64748b" };
 
-export function classifyScore(
-  score: number,
-  thresholds = DEFAULT_THRESHOLDS,
-): SuitabilityClass {
-  if (score >= thresholds.tau3) return "Highly Suitable";
-  if (score >= thresholds.tau2) return "Moderately Suitable";
-  if (score >= thresholds.tau1) return "Low Suitability";
-  return "Not Suitable";
-}
-
 export function classRange(
   cls: SuitabilityClass,
   t = DEFAULT_THRESHOLDS,
@@ -92,10 +82,6 @@ export function isShorelineExcluded(site: Site, bufferM: number): boolean {
   return d !== null && d < bufferM;
 }
 
-export function hasHighHazard(site: Site): boolean {
-  return Object.values(site.hazards).some((level) => level === 3);
-}
-
 /** The single human-readable reason a site cannot be recommended, if any. */
 export function ineligibilityReason(
   site: Site,
@@ -103,13 +89,13 @@ export function ineligibilityReason(
 ): string | null {
   if (isShorelineExcluded(site, bufferM)) {
     const d = site.factors.shoreline_distance_m ?? 0;
-    return `Inside the ${bufferM} m shoreline setback (${d.toFixed(0)} m from the coast)`;
+    return `Too close to the shoreline — ${d.toFixed(0)} m, where the minimum is ${bufferM} m`;
   }
   const high = (Object.keys(site.hazards) as HazardKey[]).filter(
     (k) => site.hazards[k] === 3,
   );
   if (high.length > 0) {
-    return `High ${high.map(hazardShortLabel).join(" and ")} susceptibility`;
+    return `High ${high.map(hazardShortLabel).join(" and ")} risk`;
   }
   return null;
 }
@@ -119,24 +105,24 @@ export function ineligibilityReason(
 /* ------------------------------------------------------------------ */
 
 export const SERVICE_FACTOR_LABEL: Record<ServiceFactorKey, string> = {
-  building_density: "Building footprint density",
+  building_density: "Buildings nearby",
   road_accessibility: "Road accessibility",
   facility_distance: "Distance from existing facilities",
 };
 
 export const SERVICE_FACTOR_HINT: Record<ServiceFactorKey, string> = {
   building_density:
-    "Population proxy — OSM building footprints within 500 m. Higher means more residents to serve.",
+    "How many buildings there are within 500 m of the site. More buildings usually means more people living nearby, so a facility here would serve more residents.",
   road_accessibility:
-    "Normalized inverse distance to the road network. Values near 0 mean the site is FAR from mapped roads and therefore has LOW accessibility; values near 1 mean it sits right on the network.",
+    "How close the site is to a road. A value near 1 means it sits right beside a road and is easy to reach. A value near 0 means it is far from any road and hard to reach.",
   facility_distance:
-    "Service coverage gap — distance to the nearest existing healthcare facility. Higher means a larger unserved gap, which raises priority.",
+    "How far the site is from the nearest health facility that already exists. The farther away, the less served that area is today — so a new facility there would help more people.",
 };
 
 export const HAZARD_LABEL: Record<HazardKey, string> = {
-  flood_susceptibility: "Flood susceptibility",
-  landslide_susceptibility: "Landslide susceptibility",
-  storm_surge_susceptibility: "Storm surge susceptibility",
+  flood_susceptibility: "Flood risk",
+  landslide_susceptibility: "Landslide risk",
+  storm_surge_susceptibility: "Storm surge risk",
 };
 
 export function hazardShortLabel(key: HazardKey): string {
@@ -173,29 +159,29 @@ export function describeRoadAccessibility(
   const distance =
     roadDistanceM === undefined
       ? ""
-      : ` The nearest mapped road is about ${formatMetres(roadDistanceM)} away.`;
+      : ` The nearest road is about ${formatMetres(roadDistanceM)} away.`;
 
   if (normalized <= 0.05) {
     return (
-      `${normalized.toFixed(3)} is very close to 0, which means this site is among ` +
-      `the FARTHEST from the mapped road network — accessibility is LOW.${distance}`
+      `${normalized.toFixed(3)} is almost 0, so this is one of the FARTHEST sites ` +
+      `from any road — it would be HARD to reach.${distance}`
     );
   }
   if (normalized < 0.33) {
     return (
-      `${normalized.toFixed(3)} is in the lower range, so the site is comparatively ` +
-      `far from the road network and accessibility is limited.${distance}`
+      `${normalized.toFixed(3)} is a low number, so the site is quite far from the ` +
+      `nearest road and would be difficult to reach.${distance}`
     );
   }
   if (normalized < 0.66) {
     return (
-      `${normalized.toFixed(3)} is mid-range: the site has moderate access to the ` +
-      `road network.${distance}`
+      `${normalized.toFixed(3)} is in the middle, so the site is reasonably easy to ` +
+      `reach by road.${distance}`
     );
   }
   return (
-    `${normalized.toFixed(3)} is close to 1, meaning the site sits on or beside the ` +
-    `mapped road network — accessibility is HIGH.${distance}`
+    `${normalized.toFixed(3)} is close to 1, so the site sits right on or beside a ` +
+    `road — it would be EASY to reach.${distance}`
   );
 }
 
@@ -224,43 +210,45 @@ export function formatScore(score: number): string {
 /* ------------------------------------------------------------------ */
 
 /**
- * Used only if a dataset somehow ships without `metadata.score_guide`. The
- * canonical text is authored in the training pipeline so the notebook, the
- * printed outputs and this app cannot drift apart.
+ * The short, scannable version shown on the welcome screen and in the guide
+ * dialog. It is a function of the shortlist bounds rather than a constant: the
+ * user picks how many sites to see, so the copy must never claim a fixed
+ * "best three".
  */
-export const FALLBACK_SCORE_GUIDE =
-  "Every site receives ONE composite suitability score between 0 and 1 that " +
-  "already factors in all service criteria and all hazard penalties. Scores " +
-  "closer to 1 indicate higher suitability; scores closer to 0 indicate lower " +
-  "suitability.";
-
-/** The short, scannable version shown in the legend and the welcome screen. */
-export const SCORE_GUIDE_POINTS: { title: string; body: string }[] = [
-  {
-    title: "One score per site, from 0 to 1",
-    body:
-      "You do not need to weigh individual factors yourself. Each site carries a single " +
-      "composite score that already combines population proxy, road accessibility, " +
-      "coverage gap and every hazard penalty.",
-  },
-  {
-    title: "Closer to 1 is better, closer to 0 is worse",
-    body:
-      "A score of 0.82 is a strong site. A score of 0.11 is a weak one. The same direction " +
-      "applies to the individual factor values shown as supporting detail — including road " +
-      "accessibility, where 0.007 means FAR from roads and therefore LOW accessibility.",
-  },
-  {
-    title: "Hazard is already inside the score",
-    body:
-      "There is no separate 'without hazard' result to compare against. Flood, landslide and " +
-      "storm surge susceptibility are subtracted from every score, and a site rated High on " +
-      "any hazard is never recommended no matter how well it scores.",
-  },
-  {
-    title: "Only the top three sites are surfaced",
-    body:
-      "The map scores the whole district, but the recommendation list is capped at three " +
-      "eligible sites so the shortlist stays reviewable.",
-  },
-];
+export function scoreGuidePoints(
+  minTopN: number,
+  maxTopN: number,
+): { title: string; body: string }[] {
+  return [
+    {
+      title: "Every site gets one score, from 0 to 1",
+      body:
+        "You do not need to weigh anything yourself. The score already takes into account " +
+        "how built-up the area is, how easy the site is to reach by road, how far the " +
+        "nearest health facility is, and how exposed the site is to flood, landslide and " +
+        "storm surge.",
+    },
+    {
+      title: "The closer to 1, the better the site",
+      body:
+        "0.82 is a strong site. 0.11 is a weak one. The smaller values shown underneath " +
+        "work the same way — including road accessibility, where 0.007 means the site is " +
+        "FAR from any road and would be HARD to reach.",
+    },
+    {
+      title: "Hazard risk is already counted in the score",
+      body:
+        "There is no separate hazard-free version of the score to compare against. Flood, " +
+        "landslide and storm surge risk are already subtracted, and any site rated High on " +
+        "a hazard is never recommended — no matter how good the rest of its score looks.",
+    },
+    {
+      title: "You choose how many sites you see",
+      body:
+        `The map scores the whole district, but the recommendation list only shows the ` +
+        `number you ask for — anywhere from ${minTopN} to ${maxTopN} sites, set in the ` +
+        `search panel. Keeping it short makes the list easier to review; raise it when you ` +
+        `want more options to compare.`,
+    },
+  ];
+}

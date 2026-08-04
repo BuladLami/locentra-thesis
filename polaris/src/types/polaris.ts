@@ -120,6 +120,16 @@ export interface RankedSite extends Site {
   distanceFromCentreM: number;
 }
 
+/** Why sites inside the radius did or did not reach the shortlist. */
+export interface RecommendationSummary {
+  /** Sites inside the search radius, before any gate. */
+  inRadius: number;
+  /** Removed for sitting inside the shoreline setback. */
+  shorelineExcluded: number;
+  /** Removed for carrying a High hazard rating. */
+  hazardExcluded: number;
+}
+
 export interface EvaluationResult {
   latitude: number;
   longitude: number;

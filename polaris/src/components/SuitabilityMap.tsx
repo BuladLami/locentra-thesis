@@ -24,7 +24,9 @@ import { cn } from "@/lib/utils";
 import { formatScore } from "@/lib/suitability";
 import type { AppMode, RankedSite, Site, TopRecommendation } from "@/types/polaris";
 
-const TALOMO_CENTRE: [number, number] = [125.5439, 7.0511];
+/** Opening view of the district — also where "Clear search" returns to. */
+export const TALOMO_CENTRE: [number, number] = [125.5439, 7.0511];
+export const DEFAULT_ZOOM = 12.2;
 
 export interface SuitabilityMapProps {
   mapRef: React.Ref<MapRef>;
@@ -99,7 +101,7 @@ export function SuitabilityMap({
       theme={theme}
       className={cn("size-full", className)}
       center={TALOMO_CENTRE}
-      zoom={12.2}
+      zoom={DEFAULT_ZOOM}
       minZoom={9}
       maxZoom={18}
       attributionControl={{ compact: true }}
@@ -198,7 +200,7 @@ export function SuitabilityMap({
                 <p className="text-muted-foreground text-xs">{rec.barangay}</p>
               )}
               <p className="mt-1 text-xs">
-                Composite score{" "}
+                Score{" "}
                 <span className="tabular font-semibold">
                   {formatScore(rec.score)}
                 </span>{" "}

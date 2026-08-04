@@ -40,14 +40,25 @@ export function useMapSource(
 
     let cancelled = false;
 
+    // NOTE: do not gate this on `map.isStyleLoaded()`. That returns false
+    // while the basemap's own tiles are still streaming, and no further
+    // `styledata` event follows a tile load — so gating on it silently drops
+    // the layer on first paint and it only appears if the caller toggles the
+    // data off and on again. Adding a source only needs the style *spec*
+    // parsed, which mapcn's `isLoaded` (the map's `load` event) already
+    // guarantees. Anything genuinely premature throws and is retried below.
     const attach = () => {
-      // `styledata` can fire mid-swap, before the new style can accept
-      // sources. It fires repeatedly, so skipping early is safe — a later
-      // event completes the attach.
-      if (cancelled || !map.isStyleLoaded()) return;
+      if (cancelled) return;
+
+      // Idempotent: `idle` fires after every pan and zoom settle, so once the
+      // source and its layers are present this must cost nothing. Without this
+      // guard every settle would re-`setData` the whole feature collection.
+      const hasSource = Boolean(map.getSource(sourceId));
+      const hasLayers = layersRef.current.every((l) => map.getLayer(l.id));
+      if (hasSource && hasLayers) return;
 
       try {
-        if (!map.getSource(sourceId)) {
+        if (!hasSource) {
           map.addSource(sourceId, { type: "geojson", data });
         } else {
           (map.getSource(sourceId) as MapLibreGL.GeoJSONSource).setData(data);
@@ -61,18 +72,24 @@ export function useMapSource(
             } as MapLibreGL.AddLayerObject);
           }
         }
-      } catch (err) {
-        console.warn(`[POLARIS] could not attach layer source "${sourceId}"`, err);
+      } catch {
+        // Style not ready yet (mid-swap). One of the retries below will land.
       }
     };
 
     attach();
-    // A style swap wipes every custom source and layer, so re-attach after one.
+    // `style.load` covers theme swaps, which wipe every custom source and
+    // layer. `idle` is the safety net: it fires once the map has finished
+    // everything it was doing, so a first-paint miss cannot persist.
+    map.on("style.load", attach);
     map.on("styledata", attach);
+    map.on("idle", attach);
 
     return () => {
       cancelled = true;
+      map.off("style.load", attach);
       map.off("styledata", attach);
+      map.off("idle", attach);
 
       try {
         for (const layer of layersRef.current) {

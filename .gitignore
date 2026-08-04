@@ -1,0 +1,51 @@
+# ---------------------------------------------------------------------------
+# POLARIS — single ignore list for the whole repository.
+#
+# The React app lives in ./polaris but git's root is here, so one file at the
+# root covers both levels.
+#
+# Patterns are deliberately UNANCHORED (`node_modules/`, not `/node_modules`).
+# A leading slash anchors a pattern to the directory holding the .gitignore, so
+# `/node_modules` here would match only a folder at the repo root and would
+# silently stop ignoring polaris/node_modules. Unanchored patterns match at any
+# depth, which is what a nested project needs.
+# ---------------------------------------------------------------------------
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+build/
+dist/
+*.tsbuildinfo
+
+# Deployment
+.vercel
+
+# Bulk OpenStreetMap extracts (Geofabrik .osm.pbf / shapefile downloads).
+# Multi-gigabyte source data — keep it local. GitHub rejects files over 100 MB,
+# so committing these would produce a broken push that is painful to unwind.
+# The app never reads them: it reads public/data/*.json, which is generated
+# from them by polaris/scripts/fetch-geodata.mjs.
+updated osm/
+*.osm.pbf
+*.osm.bz2
+*-free.shp/
+
+# Local environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Editor / OS cruft
+.DS_Store
+Thumbs.db
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
