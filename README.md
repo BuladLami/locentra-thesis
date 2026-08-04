@@ -13,7 +13,7 @@ University of the Immaculate Conception — College of Computer Studies.
 POLARIS scores every candidate site in the district on a **single composite
 suitability scale from 0 to 1** and explains each score in plain language.
 
-- **Recommend** — pick a search area and get the **top three eligible sites**
+- **Recommend** — pick a search area and get the **top eligible sites**
   inside it, each with a written justification.
 - **Evaluate** — click any point and read its composite score and what drives it.
 
