@@ -41,6 +41,13 @@ updated osm/
 .env.test.local
 .env.production.local
 
+# Working notes kept local: the panel-revision traceability table and the
+# training-pipeline prompt drafts. These are authoring scratch for the
+# manuscript, not part of the app, and they churn every time the panel or the
+# notebook changes.
+REVISIONS.md
+TRAINING_*.md
+
 # Editor / OS cruft
 .DS_Store
 Thumbs.db
