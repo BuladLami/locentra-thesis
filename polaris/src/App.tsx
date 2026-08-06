@@ -60,6 +60,7 @@ export default function App() {
   // legend rather than a wall of colour on first paint.
   const [showShorelineBuffer, setShowShorelineBuffer] = useState(false);
   const [showAllSites, setShowAllSites] = useState(false);
+  const [showFacilities, setShowFacilities] = useState(false);
 
   /* ---- Dataset-derived ----------------------------------------------- */
   const metadata = bundle?.dataset.metadata ?? null;
@@ -76,6 +77,10 @@ export default function App() {
     () => sites.filter((s) => isShorelineExcluded(s, bufferM)).length,
     [sites, bufferM],
   );
+
+  /** Null when the file is missing, which hides the toggle rather than
+      offering an empty layer. */
+  const facilityCount = bundle?.facilities?.features.length ?? null;
 
   /* ---- Map navigation ------------------------------------------------ */
   const flyTo = useCallback((lat: number, lon: number, zoom = 15) => {
@@ -266,9 +271,11 @@ export default function App() {
               topRecommendations={mapRecommendations}
               boundary={bundle.boundary}
               coastline={bundle.coastline}
+              facilities={bundle.facilities}
               shorelineBufferM={bufferM}
               showShorelineBuffer={showShorelineBuffer}
               showAllSites={showAllSites}
+              showFacilities={showFacilities}
               searchCentre={search.centre}
               searchRadiusM={Number.parseFloat(search.radiusInput) || 0}
               evalPoint={evaluation.point}
@@ -283,6 +290,9 @@ export default function App() {
               onToggleShorelineBuffer={() => setShowShorelineBuffer((v) => !v)}
               showAllSites={showAllSites}
               onToggleAllSites={() => setShowAllSites((v) => !v)}
+              showFacilities={showFacilities}
+              onToggleFacilities={() => setShowFacilities((v) => !v)}
+              facilityCount={facilityCount}
               siteCount={sites.length}
               excludedCount={excludedCount}
             />

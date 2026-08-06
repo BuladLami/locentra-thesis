@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, Layers, Waves } from "lucide-react";
+import { ChevronDown, Cross, Layers, Waves } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
@@ -21,6 +21,9 @@ export function MapLegend({
   onToggleShorelineBuffer,
   showAllSites,
   onToggleAllSites,
+  showFacilities,
+  onToggleFacilities,
+  facilityCount,
   siteCount,
   excludedCount,
 }: {
@@ -30,6 +33,10 @@ export function MapLegend({
   onToggleShorelineBuffer: () => void;
   showAllSites: boolean;
   onToggleAllSites: () => void;
+  showFacilities: boolean;
+  onToggleFacilities: () => void;
+  /** Null when the facilities file is absent — the toggle then hides entirely. */
+  facilityCount: number | null;
   siteCount: number;
   excludedCount: number;
 }) {
@@ -92,6 +99,18 @@ export function MapLegend({
                       Ruled out — within {shorelineBufferM} m of the shoreline
                     </span>
                   </li>
+                  {facilityCount !== null && (
+                    <li className="flex items-center gap-2 text-sm">
+                      {/* Ring, not a filled dot — matches how the map draws it. */}
+                      <span
+                        className="bg-card size-2.5 shrink-0 rounded-full border-2"
+                        style={{ borderColor: `var(--facility-ring)` }}
+                      />
+                      <span className="text-muted-foreground truncate">
+                        Existing health facility — not a candidate site
+                      </span>
+                    </li>
+                  )}
                 </ul>
               </div>
 
@@ -113,7 +132,26 @@ export function MapLegend({
                   hint={`${excludedCount} site${excludedCount === 1 ? "" : "s"} ruled out`}
                   icon={<Waves className="size-4" />}
                 />
+                {facilityCount !== null && (
+                  <LegendToggle
+                    checked={showFacilities}
+                    onChange={onToggleFacilities}
+                    label="Existing health facilities"
+                    hint={facilityCount.toLocaleString()}
+                    icon={<Cross className="size-4" />}
+                  />
+                )}
               </div>
+
+              {facilityCount !== null && showFacilities && (
+                <p className="text-muted-foreground border-t pt-3 text-xs leading-relaxed">
+                  These are the facilities each site's “distance to nearest
+                  health facility” is measured against. They are drawn from a
+                  current OpenStreetMap extract, which may not match the extract
+                  the scores were computed from — treat them as context, not as
+                  a check on the numbers.
+                </p>
+              )}
             </div>
           </div>
         </div>

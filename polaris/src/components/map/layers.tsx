@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react";
 import type MapLibreGL from "maplibre-gl";
+import { Popup } from "maplibre-gl";
 import type { Feature, FeatureCollection, Point, Polygon } from "geojson";
 
 import { useMap } from "@/components/ui/map";
@@ -9,7 +10,12 @@ import {
 } from "@/components/map/use-map-source";
 import type { Theme } from "@/hooks/use-theme";
 import type { Site, SuitabilityClass } from "@/types/polaris";
-import { CLASS_HEX, EXCLUDED_HEX, isShorelineExcluded } from "@/lib/suitability";
+import {
+  CLASS_HEX,
+  EXCLUDED_HEX,
+  FACILITY_HEX,
+  isShorelineExcluded,
+} from "@/lib/suitability";
 
 /** Reference latitude for ground-distance-to-pixel conversions in Talomo. */
 const REF_LAT = 7.05;
@@ -117,6 +123,156 @@ export function ShorelineBufferLayer({
 
   useMapSource("shoreline", data, layers);
   return null;
+}
+
+/* ================================================================== */
+/*  Existing health facilities                                         */
+/* ================================================================== */
+
+/**
+ * The facilities every site's `facility_distance_m` is measured against.
+ *
+ * Drawn as hollow rings rather than filled dots: the filled-circle vocabulary
+ * belongs to scored sites, and a facility is not a candidate location. Keeping
+ * the two shapes apart means the layer can be switched on over the site dots
+ * without either becoming ambiguous.
+ */
+export function FacilitiesLayer({
+  data,
+  theme,
+  visible,
+}: {
+  data: FeatureCollection | null;
+  theme: Theme;
+  visible: boolean;
+}) {
+  const layers = useMemo(() => {
+    const ring = FACILITY_HEX[theme];
+    const core = theme === "dark" ? "#0b1120" : "#ffffff";
+    const visibility = (visible ? "visible" : "none") as "visible" | "none";
+
+    return [
+      {
+        id: "facility-points",
+        type: "circle" as const,
+        layout: { visibility },
+        paint: {
+          "circle-color": core,
+          "circle-opacity": 0.95,
+          "circle-radius": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            10,
+            2.6,
+            12,
+            3.6,
+            14,
+            5,
+            16,
+            7,
+            18,
+            9.5,
+          ] as MapLibreGL.ExpressionSpecification,
+          "circle-stroke-color": ring,
+          "circle-stroke-opacity": 0.95,
+          "circle-stroke-width": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            10,
+            1.4,
+            14,
+            2,
+            18,
+            2.8,
+          ] as MapLibreGL.ExpressionSpecification,
+        },
+      },
+    ];
+  }, [theme, visible]);
+
+  useMapSource("facilities", data, layers);
+  return null;
+}
+
+/**
+ * Hover readout for the facility rings.
+ *
+ * Facilities are reference context, not something you select, so this is a
+ * transient popup rather than a click target — it never competes with placing
+ * a search centre or opening a site dialog.
+ */
+export function FacilityHover({ enabled }: { enabled: boolean }) {
+  const { map, isLoaded } = useMap();
+
+  useEffect(() => {
+    if (!map || !isLoaded || !enabled) return;
+
+    let popup: MapLibreGL.Popup | null = null;
+
+    const clear = () => {
+      popup?.remove();
+      popup = null;
+    };
+
+    const handleMove = (e: MapLibreGL.MapMouseEvent) => {
+      if (!map.getLayer("facility-points")) return clear();
+
+      const hit = map.queryRenderedFeatures(e.point, {
+        layers: ["facility-points"],
+      })[0];
+
+      if (!hit) return clear();
+
+      const props = hit.properties ?? {};
+      const name = typeof props.name === "string" ? props.name : null;
+      const kind = typeof props.kind === "string" ? props.kind : "Health facility";
+
+      clear();
+      popup = new Popup({
+        closeButton: false,
+        closeOnClick: false,
+        offset: 12,
+        className: "polaris-facility-popup",
+      })
+        .setLngLat(e.lngLat)
+        // `.maplibregl-popup-content` is stripped to transparent globally, so
+        // the card styling lives here — same vocabulary as <MarkerTooltip>.
+        .setHTML(
+          `<div class="bg-popover text-popover-foreground max-w-56 rounded-lg border px-2.5 py-1.5 shadow-lg">` +
+            `<p class="text-sm font-semibold">${escapeHtml(name ?? kind)}</p>` +
+            (name
+              ? `<p class="text-muted-foreground text-xs">${escapeHtml(kind)}</p>`
+              : "") +
+            `<p class="text-muted-foreground mt-1 text-[11px]">Existing facility — not a candidate site</p>` +
+            `</div>`,
+        )
+        .addTo(map);
+    };
+
+    map.on("mousemove", handleMove);
+    return () => {
+      map.off("mousemove", handleMove);
+      clear();
+    };
+  }, [map, isLoaded, enabled]);
+
+  return null;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(
+    /[&<>"']/g,
+    (c) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[c] ?? c,
+  );
 }
 
 /* ================================================================== */

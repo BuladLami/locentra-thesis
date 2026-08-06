@@ -13,15 +13,19 @@
  *   talomo_barangays.json  — admin_level=10 boundary relations (Overpass),
  *                            used to give every scored site a real barangay
  *                            name instead of a coordinate-range guess.
+ *   talomo_facilities.json — existing health facilities (Overpass), so the
+ *                            `facility_distance_m` every site reports has a
+ *                            visible referent on the map instead of being a
+ *                            number the user has to take on trust.
  *
- * All three are real OSM geometry — nothing here is hand-drawn. If a fetch
+ * All four are real OSM geometry — nothing here is hand-drawn. If a fetch
  * fails, the existing file on disk is left untouched so an offline run never
  * silently degrades the dataset.
  *
  * Usage:  npm run data:geo
  */
 
-import { writeFile, mkdir, access } from "node:fs/promises";
+import { writeFile, readFile, mkdir, access } from "node:fs/promises";
 import path from "node:path";
 
 const OUT_DIR = path.resolve(import.meta.dirname, "..", "public", "data");
@@ -293,6 +297,193 @@ async function fetchBarangays() {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Existing health facilities — Overpass                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Care-delivery points only. Pharmacies and dental surgeries are deliberately
+ * excluded: the model's `facility_distance_m` measures the gap in *health
+ * service coverage*, so plotting retail or specialist-only points would put
+ * markers on the map that the score never counted.
+ */
+const FACILITY_AMENITY = ["hospital", "clinic", "doctors", "health_post"];
+const FACILITY_HEALTHCARE = [
+  "hospital",
+  "clinic",
+  "centre",
+  "doctor",
+  "health_post",
+];
+
+/* ---- Clipping to the district ---- */
+
+/** Ray-casting test against a single linear ring. */
+function pointInRing([x, y], ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/**
+ * Point-in-polygon against a Polygon or MultiPolygon, honouring holes: ring 0
+ * of each polygon is the outer boundary and any further rings are cut out.
+ */
+function pointInGeometry(point, geometry) {
+  const polygons =
+    geometry.type === "Polygon"
+      ? [geometry.coordinates]
+      : geometry.type === "MultiPolygon"
+        ? geometry.coordinates
+        : [];
+
+  return polygons.some((rings) => {
+    if (!pointInRing(point, rings[0])) return false;
+    return !rings.slice(1).some((hole) => pointInRing(point, hole));
+  });
+}
+
+/**
+ * Loads the district polygon written earlier in this run. Returns null when it
+ * is missing so the caller can fall back to the unclipped set rather than
+ * silently emitting an empty layer.
+ */
+async function loadBoundaryGeometry() {
+  try {
+    const raw = await readFile(
+      path.join(OUT_DIR, "talomo_boundary.json"),
+      "utf8",
+    );
+    return JSON.parse(raw).features?.[0]?.geometry ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Human-readable kind, preferring the more specific tag. */
+function facilityKind(tags) {
+  const raw = tags.amenity ?? tags.healthcare ?? "";
+  const map = {
+    hospital: "Hospital",
+    clinic: "Clinic",
+    // OSM tags many barangay health centres as `amenity=doctors`. "Doctor's
+    // surgery" is the British reading of that tag and misdescribes them, so
+    // use the neutral term that fits both.
+    doctors: "Doctor's clinic",
+    doctor: "Doctor's clinic",
+    health_post: "Health post",
+    centre: "Health centre",
+  };
+  return map[raw] ?? "Health facility";
+}
+
+async function fetchFacilities() {
+  const bbox = `${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east}`;
+  const amenity = FACILITY_AMENITY.join("|");
+  const healthcare = FACILITY_HEALTHCARE.join("|");
+
+  // `out center` collapses building polygons to a single point, so a hospital
+  // mapped as a way and one mapped as a node are treated identically.
+  const query = `
+    [out:json][timeout:120];
+    (
+      node["amenity"~"^(${amenity})$"](${bbox});
+      way["amenity"~"^(${amenity})$"](${bbox});
+      relation["amenity"~"^(${amenity})$"](${bbox});
+      node["healthcare"~"^(${healthcare})$"](${bbox});
+      way["healthcare"~"^(${healthcare})$"](${bbox});
+      relation["healthcare"~"^(${healthcare})$"](${bbox});
+    );
+    out center tags;
+  `;
+
+  const json = await overpass(query);
+
+  // Overpass is queried on a bbox that overhangs the district on every side,
+  // so clip to the actual polygon. Without this the layer would show facilities
+  // across neighbouring districts that are not part of the study area.
+  const boundary = await loadBoundaryGeometry();
+  if (!boundary) {
+    console.warn(
+      "   !  talomo_boundary.json unavailable — keeping the full bbox set.",
+    );
+  }
+
+  const features = [];
+  const seen = new Set();
+  let outside = 0;
+
+  for (const el of json.elements ?? []) {
+    const lon = el.lon ?? el.center?.lon;
+    const lat = el.lat ?? el.center?.lat;
+    if (typeof lon !== "number" || typeof lat !== "number") continue;
+
+    if (boundary && !pointInGeometry([lon, lat], boundary)) {
+      outside += 1;
+      continue;
+    }
+
+    // The same facility can be tagged on both a node and its building way.
+    // Collapse anything landing on the same ~10 m spot to one marker.
+    const dedupe = `${lon.toFixed(4)},${lat.toFixed(4)}`;
+    if (seen.has(dedupe)) continue;
+    seen.add(dedupe);
+
+    const tags = el.tags ?? {};
+    features.push({
+      type: "Feature",
+      properties: {
+        name: tags.name ?? null,
+        kind: facilityKind(tags),
+        amenity: tags.amenity ?? null,
+        healthcare: tags.healthcare ?? null,
+        osm_type: el.type,
+        osm_id: el.id,
+      },
+      geometry: { type: "Point", coordinates: [lon, lat] },
+    });
+  }
+
+  if (features.length === 0) {
+    throw new Error("Overpass returned no health facilities inside the district");
+  }
+
+  // Named facilities first, alphabetically; the unnamed ones trail behind
+  // rather than heading the file with a block of blanks.
+  features.sort((a, b) => {
+    const an = a.properties.name;
+    const bn = b.properties.name;
+    if (an && bn) return an.localeCompare(bn);
+    if (an) return -1;
+    if (bn) return 1;
+    return 0;
+  });
+
+  if (boundary) {
+    console.log(`       Clipped to the district: ${outside} outside dropped.`);
+  }
+
+  return {
+    type: "FeatureCollection",
+    properties: {
+      source: "OpenStreetMap via Overpass API",
+      query_bbox: BBOX,
+      clipped_to: boundary ? "Talomo District boundary" : null,
+      excluded_outside_district: boundary ? outside : 0,
+      amenity_classes: FACILITY_AMENITY,
+      healthcare_classes: FACILITY_HEALTHCARE,
+      fetched_at: new Date().toISOString(),
+    },
+    features,
+  };
+}
+
+/* ------------------------------------------------------------------ */
 
 async function writeOrKeep(filename, producer, label) {
   const target = path.join(OUT_DIR, filename);
@@ -314,16 +505,38 @@ async function writeOrKeep(filename, producer, label) {
   }
 }
 
+const TARGETS = [
+  ["boundary", "talomo_boundary.json", fetchBoundary, "Talomo boundary"],
+  ["coastline", "talomo_coastline.json", fetchCoastline, "OSM coastline"],
+  ["barangays", "talomo_barangays.json", fetchBarangays, "Barangays"],
+  ["facilities", "talomo_facilities.json", fetchFacilities, "Health facilities"],
+];
+
 async function main() {
+  // Named arguments refetch a subset. Re-pulling everything to add one layer
+  // risks disturbing geometry that is already correct, so `... facilities`
+  // exists to touch exactly one file.
+  const requested = process.argv.slice(2);
+  const targets = requested.length
+    ? TARGETS.filter(([name]) => requested.includes(name))
+    : TARGETS;
+
+  if (targets.length === 0) {
+    console.error(
+      `Unknown target(s): ${requested.join(", ")}\n` +
+        `Valid targets: ${TARGETS.map(([n]) => n).join(", ")}`,
+    );
+    process.exit(1);
+  }
+
   await mkdir(OUT_DIR, { recursive: true });
   console.log("POLARIS — fetching OSM reference geometry\n");
 
-  await writeOrKeep("talomo_boundary.json", fetchBoundary, "Talomo boundary");
-  // Be polite to Nominatim/Overpass: stagger the requests.
-  await new Promise((r) => setTimeout(r, 1200));
-  await writeOrKeep("talomo_coastline.json", fetchCoastline, "OSM coastline");
-  await new Promise((r) => setTimeout(r, 1200));
-  await writeOrKeep("talomo_barangays.json", fetchBarangays, "Barangays");
+  for (const [, filename, producer, label] of targets) {
+    await writeOrKeep(filename, producer, label);
+    // Be polite to Nominatim/Overpass: stagger the requests.
+    await new Promise((r) => setTimeout(r, 1200));
+  }
 
   console.log("\nDone.");
 }

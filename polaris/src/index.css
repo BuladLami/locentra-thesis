@@ -39,6 +39,9 @@
   --suit-low: oklch(0.75 0.15 75);
   --suit-none: oklch(0.6 0.2 25);
   --suit-excluded: oklch(0.62 0.02 260);
+  /* Existing facilities — violet, the one hue the score ramp leaves free.
+     Tracks FACILITY_HEX in lib/suitability.ts; update both together. */
+  --facility-ring: oklch(0.52 0.24 292);
 }
 
 .dark {
@@ -67,6 +70,7 @@
   --suit-low: oklch(0.8 0.15 78);
   --suit-none: oklch(0.68 0.2 24);
   --suit-excluded: oklch(0.6 0.02 260);
+  --facility-ring: oklch(0.76 0.14 295);
 }
 
 @theme inline {
@@ -95,6 +99,7 @@
   --color-suit-low: var(--suit-low);
   --color-suit-none: var(--suit-none);
   --color-suit-excluded: var(--suit-excluded);
+  --color-facility-ring: var(--facility-ring);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);

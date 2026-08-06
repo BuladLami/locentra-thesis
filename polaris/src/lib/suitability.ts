@@ -51,6 +51,14 @@ export const CLASS_HEX: Record<
 
 export const EXCLUDED_HEX = { light: "#94a3b8", dark: "#64748b" };
 
+/**
+ * Existing health facilities. Violet is the one hue the score ramp does not
+ * use, so a facility can never be misread as a scored site — and the layer is
+ * drawn as a ring rather than a filled dot to keep the two visually distinct
+ * even for a colour-blind reader.
+ */
+export const FACILITY_HEX = { light: "#7c3aed", dark: "#a78bfa" };
+
 export function classRange(
   cls: SuitabilityClass,
   t = DEFAULT_THRESHOLDS,

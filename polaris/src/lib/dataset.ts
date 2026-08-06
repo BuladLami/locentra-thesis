@@ -15,6 +15,8 @@ export interface PolarisBundle {
   dataset: PolarisDataset;
   boundary: FeatureCollection | null;
   coastline: FeatureCollection | null;
+  /** Existing health facilities — the referent for `facility_distance_m`. */
+  facilities: FeatureCollection | null;
   /** Barangay names that actually contain at least one scored site. */
   barangays: BarangayEntry[];
   loadedAt: Date;
@@ -86,10 +88,11 @@ function deriveBarangays(dataset: PolarisDataset): BarangayEntry[] {
 async function fetchBundle(force: boolean): Promise<PolarisBundle> {
   const cacheBust = force ? `?t=${Date.now()}` : "";
 
-  const [dataset, boundary, coastline] = await Promise.all([
+  const [dataset, boundary, coastline, facilities] = await Promise.all([
     getJson<PolarisDataset>("candidate_sites.json", cacheBust),
     getOptionalJson<FeatureCollection>("talomo_boundary.json", cacheBust),
     getOptionalJson<FeatureCollection>("talomo_coastline.json", cacheBust),
+    getOptionalJson<FeatureCollection>("talomo_facilities.json", cacheBust),
   ]);
 
   if (!Array.isArray(dataset?.sites)) {
@@ -104,6 +107,7 @@ async function fetchBundle(force: boolean): Promise<PolarisBundle> {
     dataset,
     boundary,
     coastline,
+    facilities,
     barangays: deriveBarangays(dataset),
     loadedAt: new Date(),
   };

@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/map";
 import {
   BoundaryLayer,
+  FacilitiesLayer,
+  FacilityHover,
   MapInteractions,
   ResultDotsLayer,
   SearchRadiusLayer,
@@ -37,9 +39,11 @@ export interface SuitabilityMapProps {
   topRecommendations: readonly TopRecommendation[];
   boundary: FeatureCollection | null;
   coastline: FeatureCollection | null;
+  facilities: FeatureCollection | null;
   shorelineBufferM: number;
   showShorelineBuffer: boolean;
   showAllSites: boolean;
+  showFacilities: boolean;
   searchCentre: { lat: number; lon: number } | null;
   searchRadiusM: number;
   evalPoint: { lat: number; lon: number } | null;
@@ -57,9 +61,11 @@ export function SuitabilityMap({
   topRecommendations,
   boundary,
   coastline,
+  facilities,
   shorelineBufferM,
   showShorelineBuffer,
   showAllSites,
+  showFacilities,
   searchCentre,
   searchRadiusM,
   evalPoint,
@@ -130,6 +136,14 @@ export function SuitabilityMap({
         theme={theme}
         dimmed={resultSites.length > 0}
       />
+      {/* Above the district-wide dot cloud so it stays readable over it, but
+          below the numbered recommendations, which must never be obscured. */}
+      <FacilitiesLayer
+        data={facilities}
+        theme={theme}
+        visible={showFacilities}
+      />
+      <FacilityHover enabled={showFacilities} />
       <ResultDotsLayer data={resultGeoJson} theme={theme} />
 
       {/* Search centre */}
