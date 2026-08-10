@@ -4,9 +4,10 @@ import { Button } from "@/components/ui/button";
 import { CompositeScore } from "@/components/ScoreDisplay";
 import { EmptyState } from "@/components/RecommendationsPanel";
 import {
-  DEFAULT_THRESHOLDS,
   formatMetres,
   ineligibilityReason,
+  shorelineBufferOf,
+  thresholdsOf,
 } from "@/lib/suitability";
 import type { DatasetMetadata, EvaluationResult } from "@/types/polaris";
 
@@ -30,8 +31,8 @@ export function EvaluationPanel({
   }
 
   const { site } = result;
-  const bufferM = metadata?.shoreline_buffer_m ?? 50;
-  const thresholds = metadata?.thresholds ?? DEFAULT_THRESHOLDS;
+  const bufferM = shorelineBufferOf(metadata);
+  const thresholds = thresholdsOf(metadata);
   const reason = ineligibilityReason(site, bufferM);
 
   return (

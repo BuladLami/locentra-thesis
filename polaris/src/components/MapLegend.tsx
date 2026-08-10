@@ -102,10 +102,7 @@ export function MapLegend({
                   {facilityCount !== null && (
                     <li className="flex items-center gap-2 text-sm">
                       {/* Ring, not a filled dot — matches how the map draws it. */}
-                      <span
-                        className="bg-card size-2.5 shrink-0 rounded-full border-2"
-                        style={{ borderColor: `var(--facility-ring)` }}
-                      />
+                      <span className="bg-card border-facility-ring size-2.5 shrink-0 rounded-full border-2" />
                       <span className="text-muted-foreground truncate">
                         Existing health facility — not a candidate site
                       </span>

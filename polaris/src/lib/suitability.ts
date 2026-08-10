@@ -1,4 +1,5 @@
 import type {
+  DatasetMetadata,
   HazardKey,
   HazardLevel,
   ServiceFactorKey,
@@ -18,6 +19,25 @@ export interface Thresholds {
 
 /** Default thresholds; the dataset's own `metadata.thresholds` wins at runtime. */
 export const DEFAULT_THRESHOLDS: Thresholds = { tau1: 0.25, tau2: 0.4, tau3: 0.6 };
+
+/** Panel revision #2. Used only when the dataset does not declare its own. */
+export const DEFAULT_SHORELINE_BUFFER_M = 50;
+
+/**
+ * The two metadata fallbacks, in one place.
+ *
+ * Every view that renders a score needs both, and `metadata` is null until the
+ * dataset lands — so before these existed the same `?? DEFAULT_THRESHOLDS` and
+ * `?? 50` were spelled out in five components, which is five chances for one of
+ * them to drift to a different default.
+ */
+export function thresholdsOf(metadata: DatasetMetadata | null): Thresholds {
+  return metadata?.thresholds ?? DEFAULT_THRESHOLDS;
+}
+
+export function shorelineBufferOf(metadata: DatasetMetadata | null): number {
+  return metadata?.shoreline_buffer_m ?? DEFAULT_SHORELINE_BUFFER_M;
+}
 
 export const SUITABILITY_CLASSES: SuitabilityClass[] = [
   "Highly Suitable",
@@ -99,9 +119,7 @@ export function ineligibilityReason(
     const d = site.factors.shoreline_distance_m ?? 0;
     return `Too close to the shoreline — ${d.toFixed(0)} m, where the minimum is ${bufferM} m`;
   }
-  const high = (Object.keys(site.hazards) as HazardKey[]).filter(
-    (k) => site.hazards[k] === 3,
-  );
+  const high = HAZARD_KEYS.filter((k) => site.hazards[k] === 3);
   if (high.length > 0) {
     return `High ${high.map(hazardShortLabel).join(" and ")} risk`;
   }
@@ -133,7 +151,14 @@ export const HAZARD_LABEL: Record<HazardKey, string> = {
   storm_surge_susceptibility: "Storm surge risk",
 };
 
-export function hazardShortLabel(key: HazardKey): string {
+/**
+ * The hazard keys in display order. Derived from `HAZARD_LABEL` rather than
+ * written out again, so the details dialog, the eligibility check and the
+ * labels can never fall out of step with each other.
+ */
+export const HAZARD_KEYS = Object.keys(HAZARD_LABEL) as HazardKey[];
+
+function hazardShortLabel(key: HazardKey): string {
   return key.replace("_susceptibility", "").replace(/_/g, " ");
 }
 

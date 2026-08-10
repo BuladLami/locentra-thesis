@@ -16,6 +16,7 @@ import {
   DEFAULT_THRESHOLDS,
   scoreGuidePoints,
   SUITABILITY_CLASSES,
+  thresholdsOf,
   type Thresholds,
 } from "@/lib/suitability";
 import type { DatasetMetadata } from "@/types/polaris";
@@ -36,7 +37,7 @@ export function ScoreGuideDialog({
   onOpenChange: (open: boolean) => void;
   metadata: DatasetMetadata | null;
 }) {
-  const thresholds = metadata?.thresholds ?? DEFAULT_THRESHOLDS;
+  const thresholds = thresholdsOf(metadata);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

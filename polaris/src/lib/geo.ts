@@ -57,11 +57,6 @@ export function sitesWithinRadius(
   return out;
 }
 
-/** Metres-per-pixel of a Web Mercator tile pyramid at a given zoom/latitude. */
-export function metresPerPixel(latitude: number, zoom: number): number {
-  return (156543.03392 * Math.cos(toRad(latitude))) / 2 ** zoom;
-}
-
 export interface LngLatBounds {
   west: number;
   south: number;

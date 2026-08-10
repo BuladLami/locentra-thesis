@@ -30,7 +30,7 @@ import {
   MIN_RADIUS_M,
   MIN_TOP_N,
 } from "@/lib/search";
-import { isShorelineExcluded } from "@/lib/suitability";
+import { isShorelineExcluded, shorelineBufferOf } from "@/lib/suitability";
 import type { AppMode, Site, TopRecommendation } from "@/types/polaris";
 
 /**
@@ -65,7 +65,7 @@ export default function App() {
   /* ---- Dataset-derived ----------------------------------------------- */
   const metadata = bundle?.dataset.metadata ?? null;
   const sites = useMemo(() => bundle?.dataset.sites ?? [], [bundle]);
-  const bufferM = metadata?.shoreline_buffer_m ?? 50;
+  const bufferM = shorelineBufferOf(metadata);
   const bounds = useMemo(() => boundsOfSites(sites), [sites]);
 
   const siteIndex = useMemo(

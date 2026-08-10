@@ -37,7 +37,7 @@ export const MAX_TOP_N = 10;
 export const DEFAULT_TOP_N = 3;
 
 /** A click farther than this from any scored site is off-grid (sea / outside). */
-export const OFF_GRID_M = 1000;
+const OFF_GRID_M = 1000;
 
 /* ------------------------------------------------------------------ */
 /*  Input parsing                                                      */
@@ -141,16 +141,23 @@ export function rankSitesInRadius(
 ): RankingResult {
   const inRadius = sitesWithinRadius(sites, lat, lon, radiusM);
 
-  const shorelineExcluded = inRadius.filter(({ site }) =>
-    isShorelineExcluded(site, bufferM),
-  ).length;
-  const hazardExcluded = inRadius.filter(
-    ({ site }) =>
-      !site.recommendation_eligible && !isShorelineExcluded(site, bufferM),
-  ).length;
+  // One pass rather than three: the shoreline test used to run twice per site
+  // and the list was walked a third time to collect the eligible ones.
+  // Eligibility is still read straight from the dataset's own flag — the
+  // shoreline tally is a separate question about the same site, not a gate
+  // applied on top of it.
+  let shorelineExcluded = 0;
+  let hazardExcluded = 0;
+  const eligible: typeof inRadius = [];
 
-  const ranked: RankedSite[] = inRadius
-    .filter(({ site }) => site.recommendation_eligible)
+  for (const entry of inRadius) {
+    if (isShorelineExcluded(entry.site, bufferM)) shorelineExcluded += 1;
+    else if (!entry.site.recommendation_eligible) hazardExcluded += 1;
+
+    if (entry.site.recommendation_eligible) eligible.push(entry);
+  }
+
+  const ranked: RankedSite[] = eligible
     .sort((a, b) => b.site.score - a.site.score)
     .slice(0, topN)
     .map(({ site, distanceM }, i) => ({

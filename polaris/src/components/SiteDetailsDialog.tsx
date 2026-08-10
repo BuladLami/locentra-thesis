@@ -15,6 +15,7 @@ import {
   describeNormalized,
   describeRoadAccessibility,
   formatMetres,
+  HAZARD_KEYS,
   HAZARD_LABEL,
   HAZARD_LEVEL_LABEL,
   HAZARD_LEVEL_TONE,
@@ -22,15 +23,10 @@ import {
   isShorelineExcluded,
   SERVICE_FACTOR_HINT,
   SERVICE_FACTOR_LABEL,
+  shorelineBufferOf,
+  thresholdsOf,
 } from "@/lib/suitability";
-import { DEFAULT_THRESHOLDS } from "@/lib/suitability";
-import type { DatasetMetadata, HazardKey, Site } from "@/types/polaris";
-
-const HAZARD_KEYS: HazardKey[] = [
-  "flood_susceptibility",
-  "landslide_susceptibility",
-  "storm_surge_susceptibility",
-];
+import type { DatasetMetadata, Site } from "@/types/polaris";
 
 /** Plain readings for the two factors whose sentence depends on the band. */
 const BUILT_UP_READING: Record<ReturnType<typeof describeNormalized>, string> = {
@@ -61,8 +57,8 @@ export function SiteDetailsDialog({
   recommendationRank?: number;
   onOpenChange: (open: boolean) => void;
 }) {
-  const bufferM = metadata?.shoreline_buffer_m ?? 50;
-  const thresholds = metadata?.thresholds ?? DEFAULT_THRESHOLDS;
+  const bufferM = shorelineBufferOf(metadata);
+  const thresholds = thresholdsOf(metadata);
 
   return (
     <Dialog open={site !== null} onOpenChange={onOpenChange}>

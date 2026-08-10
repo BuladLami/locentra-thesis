@@ -240,6 +240,14 @@
   display: none !important;
 }
 
+/* Hover readouts follow the cursor, so they must never sit between it and the
+   canvas — catching the pointer would stop the mousemove that keeps them alive
+   and leave the card stuck on screen. */
+.polaris-site-popup,
+.polaris-facility-popup {
+  pointer-events: none;
+}
+
 .maplibregl-canvas:focus {
   outline: none;
 }

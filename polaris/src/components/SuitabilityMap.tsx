@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import type { FeatureCollection } from "geojson";
 import { Crosshair, MapPin } from "lucide-react";
 
@@ -19,6 +19,7 @@ import {
   SearchRadiusLayer,
   ShorelineBufferLayer,
   SiteDotsLayer,
+  SiteHover,
   sitesToFeatureCollection,
 } from "@/components/map/layers";
 import type { Theme } from "@/hooks/use-theme";
@@ -86,20 +87,24 @@ export function SuitabilityMap({
     [resultSites, shorelineBufferM],
   );
 
-  const handleSelect = useCallback(
-    (siteId: string) => onSelectSite(siteId),
-    [onSelectSite],
-  );
-
   /**
-   * Only the emphasised result dots open a site dialog on click. The
-   * district-wide dot layer stays click-through so that placing a search centre
-   * — and, in evaluation mode, clicking any point at all — always works.
+   * Which dots open the details dialog on click.
+   *
+   * The emphasised result dots always do. The district-wide layer joins them
+   * only while its legend toggle is on — that toggle is therefore also the
+   * escape hatch, because a pickable dot cannot double as open map: with the
+   * layer showing, a click that lands on a dot opens that site instead of
+   * placing the search centre. (Coordinates can still be typed into the search
+   * panel, which is the precise path regardless.)
+   *
+   * Evaluation mode opts out entirely — clicking *is* the mode's verb there,
+   * and a click on a dot already evaluates that same site, so the breakdown
+   * arrives in the panel without a dialog intercepting the gesture.
    */
-  const pickLayers = useMemo(
-    () => (mode === "recommendation" ? ["result-dots"] : []),
-    [mode],
-  );
+  const pickLayers = useMemo(() => {
+    if (mode !== "recommendation") return [];
+    return showAllSites ? ["result-dots", "site-dots"] : ["result-dots"];
+  }, [mode, showAllSites]);
 
   return (
     <Map
@@ -114,7 +119,7 @@ export function SuitabilityMap({
     >
       <MapInteractions
         pickLayers={pickLayers}
-        onSelectSite={handleSelect}
+        onSelectSite={onSelectSite}
         onPickLocation={onPickLocation}
       />
 
@@ -145,6 +150,14 @@ export function SuitabilityMap({
       />
       <FacilityHover enabled={showFacilities} />
       <ResultDotsLayer data={resultGeoJson} theme={theme} />
+      {/* Mounted after the dot layers so both are present to hit-test. */}
+      <SiteHover
+        sites={sites}
+        bufferM={shorelineBufferM}
+        theme={theme}
+        pickLayers={pickLayers}
+        mode={mode}
+      />
 
       {/* Search centre */}
       {mode === "recommendation" && searchCentre && (
@@ -194,7 +207,7 @@ export function SuitabilityMap({
           key={rec.site_id}
           longitude={rec.longitude}
           latitude={rec.latitude}
-          onClick={() => handleSelect(rec.site_id)}
+          onClick={() => onSelectSite(rec.site_id)}
         >
           <MarkerContent>
             <div className="group relative grid cursor-pointer place-items-center">

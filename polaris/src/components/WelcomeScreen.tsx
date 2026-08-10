@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ScoreGuideBody } from "@/components/ScoreGuideDialog";
 import { cn } from "@/lib/utils";
-import { DEFAULT_THRESHOLDS } from "@/lib/suitability";
+import { thresholdsOf } from "@/lib/suitability";
 import type { AppMode, DatasetMetadata } from "@/types/polaris";
 
 const MODE_CARDS: {
@@ -41,32 +41,46 @@ export function WelcomeScreen({
   onEnter: (mode: AppMode) => void;
 }) {
   const [selected, setSelected] = useState<AppMode | null>(null);
-  const thresholds = metadata?.thresholds ?? DEFAULT_THRESHOLDS;
+  const thresholds = thresholdsOf(metadata);
 
   return (
     <ScrollArea className="h-full">
       <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col gap-8 px-5 py-10 sm:py-14">
         {/* Masthead */}
-        <header className="animate-rise-in space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary" className="gap-1.5">
-              <MapPin className="size-3" />
-              {metadata?.study_area ?? "Talomo District, Davao City"}
-            </Badge>
+        <header className="animate-rise-in flex items-start gap-6">
+          <div className="min-w-0 flex-1 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="secondary" className="gap-1.5">
+                <MapPin className="size-3" />
+                {metadata?.study_area ?? "Talomo District, Davao City"}
+              </Badge>
+            </div>
+
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+              POLARIS
+            </h1>
+            <p className="text-muted-foreground max-w-2xl text-sm leading-relaxed sm:text-base">
+              A map-based tool for deciding where to put a new health facility.
+              It has already scored{" "}
+              <strong className="text-foreground">
+                {siteCount.toLocaleString()}
+              </strong>{" "}
+              possible sites across the district from 0 to 1, so you can see at
+              a glance which ones are worth considering.
+            </p>
           </div>
 
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            POLARIS
-          </h1>
-          <p className="text-muted-foreground max-w-2xl text-sm leading-relaxed sm:text-base">
-            A map-based tool for deciding where to put a new health facility. It
-            has already scored{" "}
-            <strong className="text-foreground">
-              {siteCount.toLocaleString()}
-            </strong>{" "}
-            possible sites across the district from 0 to 1, so you can see at a
-            glance which ones are worth considering.
-          </p>
+          {/* The full lockup, wordmark included. `alt=""` because the heading
+              beside it already says POLARIS — announcing it twice is noise.
+              Hidden on phones, where the column is too narrow to give it room
+              without pushing the score guide below the fold. */}
+          <img
+            src="/logo-lockup.png"
+            alt=""
+            width={360}
+            height={518}
+            className="hidden w-28 shrink-0 rounded-xl border shadow-sm sm:block lg:w-32"
+          />
         </header>
 
         {/* Panel revision #5 — the guide comes BEFORE any number is shown. */}
@@ -94,55 +108,73 @@ export function WelcomeScreen({
             What would you like to do?
           </h2>
 
+          {/* Each card is a wrapper, not a button: the card's own "Open the
+              map" action lives inside it, and a button may not nest inside a
+              button. The select target and the confirm action are therefore
+              siblings, which also means clicking the action never re-toggles
+              the card underneath it. */}
           <div className="grid gap-3 sm:grid-cols-2">
-            {MODE_CARDS.map(({ id, title, description, icon: Icon }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setSelected(id)}
-                aria-pressed={selected === id}
-                className={cn(
-                  "group flex flex-col gap-2 rounded-xl border p-4 text-left transition-all duration-200",
-                  "hover:-translate-y-0.5 hover:shadow-md",
-                  "focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-none",
-                  selected === id
-                    ? "border-primary bg-primary/5 shadow-sm"
-                    : "bg-card hover:border-primary/40",
-                )}
-              >
-                <span
+            {MODE_CARDS.map(({ id, title, description, icon: Icon }) => {
+              const isSelected = selected === id;
+              return (
+                <div
+                  key={id}
                   className={cn(
-                    "grid size-9 place-items-center rounded-lg transition-colors",
-                    selected === id
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground group-hover:text-foreground",
+                    "group flex flex-col rounded-xl border transition-all duration-200",
+                    "hover:-translate-y-0.5 hover:shadow-md",
+                    isSelected
+                      ? "border-primary bg-primary/5 shadow-sm"
+                      : "bg-card hover:border-primary/40",
                   )}
                 >
-                  <Icon className="size-4.5" />
-                </span>
-                <span className="font-semibold">{title}</span>
-                <span className="text-muted-foreground text-xs leading-relaxed">
-                  {description}
-                </span>
-              </button>
-            ))}
+                  {/* Clicking the selected card again clears the choice. */}
+                  <button
+                    type="button"
+                    onClick={() => setSelected(isSelected ? null : id)}
+                    aria-pressed={isSelected}
+                    className={cn(
+                      "flex flex-1 flex-col gap-2 rounded-xl p-4 text-left",
+                      "focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-none",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "grid size-9 place-items-center rounded-lg transition-colors",
+                        isSelected
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground group-hover:text-foreground",
+                      )}
+                    >
+                      <Icon className="size-4.5" />
+                    </span>
+                    <span className="font-semibold">{title}</span>
+                    <span className="text-muted-foreground text-xs leading-relaxed">
+                      {description}
+                    </span>
+                  </button>
+
+                  {isSelected && (
+                    <div className="animate-rise-in px-4 pb-4">
+                      <Button
+                        size="lg"
+                        className="w-full"
+                        onClick={() => onEnter(id)}
+                      >
+                        Open the map
+                        <ArrowRight className="size-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 pt-1">
-            <Button
-              size="lg"
-              disabled={!selected}
-              onClick={() => selected && onEnter(selected)}
-            >
-              Open the map
-              <ArrowRight className="size-4" />
-            </Button>
-            {!selected && (
-              <p className="text-muted-foreground text-xs">
-                Choose one of the two options above to continue.
-              </p>
-            )}
-          </div>
+          {!selected && (
+            <p className="text-muted-foreground text-xs">
+              Choose one of the two options above to continue.
+            </p>
+          )}
         </section>
 
         <footer className="text-muted-foreground border-t pt-5 text-xs leading-relaxed">

@@ -73,9 +73,13 @@ export function AppHeader({
               "hover:bg-accent/60 focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-none",
             )}
           >
-            <span className="bg-primary text-primary-foreground grid size-8 shrink-0 place-items-center rounded-lg font-bold shadow-sm">
-              P
-            </span>
+            <img
+              src="/logo-256.png"
+              alt=""
+              width={32}
+              height={32}
+              className="size-8 shrink-0 rounded-lg object-cover shadow-sm ring-1 ring-black/10 dark:ring-white/10"
+            />
             <div className="min-w-0 leading-tight">
               <p className="truncate text-sm font-bold tracking-tight">
                 POLARIS

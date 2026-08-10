@@ -9,11 +9,13 @@ import {
   useMapSource,
 } from "@/components/map/use-map-source";
 import type { Theme } from "@/hooks/use-theme";
-import type { Site, SuitabilityClass } from "@/types/polaris";
+import type { AppMode, Site, SuitabilityClass } from "@/types/polaris";
 import {
   CLASS_HEX,
   EXCLUDED_HEX,
   FACILITY_HEX,
+  formatScore,
+  ineligibilityReason,
   isShorelineExcluded,
 } from "@/lib/suitability";
 
@@ -279,12 +281,16 @@ function escapeHtml(s: string): string {
 /*  Candidate site dots                                                */
 /* ================================================================== */
 
+/**
+ * Exactly what the dot layers need and nothing more: `cls` and `excluded` are
+ * read by the paint expression, `site_id` by the hit test. Everything else a
+ * card wants is looked up from the `Site` record by id, so ~3,000 features do
+ * not each carry a copy of it.
+ */
 export interface SitePointProperties {
   site_id: string;
   cls: number;
   excluded: number;
-  eligible: number;
-  score: number;
 }
 
 export function sitesToFeatureCollection(
@@ -300,8 +306,6 @@ export function sitesToFeatureCollection(
         site_id: site.site_id,
         cls: CLASS_INDEX[site.suitability_class],
         excluded: isShorelineExcluded(site, bufferM) ? 1 : 0,
-        eligible: site.recommendation_eligible ? 1 : 0,
-        score: site.score,
       },
     })),
   };
@@ -385,6 +389,221 @@ export function SiteDotsLayer({
   return null;
 }
 
+/* ================================================================== */
+/*  Site dot hover readout                                             */
+/* ================================================================== */
+
+/** Hover-testable dot layers, topmost first — that is also the hit priority. */
+const HOVER_LAYERS = ["result-dots", "site-dots"] as const;
+
+/** Half-width of the dot hit box, in pixels. */
+const HIT_SLOP_PX = 6;
+
+/**
+ * The site dot under `point`, or `undefined` for open map.
+ *
+ * A background dot is barely 2 px across at district zoom, so an exact point
+ * query would demand pixel-perfect aim. This queries a small box instead and
+ * resolves it to the dot actually nearest the cursor. `layers` is consulted in
+ * order, so an emphasised result dot always wins over the dimmed district dot
+ * sitting underneath it.
+ *
+ * Hover and click both route through here, which is what lets the hover card
+ * act as the click affordance: if you can see the card, clicking opens it.
+ */
+export function pickSiteDot(
+  map: MapLibreGL.Map,
+  point: MapLibreGL.Point,
+  layers: readonly string[],
+): MapLibreGL.MapGeoJSONFeature | undefined {
+  const box = [
+    [point.x - HIT_SLOP_PX, point.y - HIT_SLOP_PX],
+    [point.x + HIT_SLOP_PX, point.y + HIT_SLOP_PX],
+  ] as [MapLibreGL.PointLike, MapLibreGL.PointLike];
+
+  for (const id of layers) {
+    if (!map.getLayer(id)) continue;
+
+    let best: MapLibreGL.MapGeoJSONFeature | undefined;
+    let bestDistance = Infinity;
+
+    for (const feature of map.queryRenderedFeatures(box, { layers: [id] })) {
+      if (feature.geometry.type !== "Point") continue;
+      const [lon, lat] = feature.geometry.coordinates;
+      const screen = map.project([lon, lat]);
+      const d = (screen.x - point.x) ** 2 + (screen.y - point.y) ** 2;
+      if (d < bestDistance) {
+        bestDistance = d;
+        best = feature;
+      }
+    }
+    if (best) return best;
+  }
+  return undefined;
+}
+
+/**
+ * Score readout for the district-wide dot cloud.
+ *
+ * The top-3 recommendation markers are real DOM markers and carry their own
+ * <MarkerTooltip>; the ~3,000 background sites are a single GPU circle layer
+ * with no DOM to attach to, so the same information is delivered here as a
+ * transient MapLibre popup driven by `queryRenderedFeatures`.
+ *
+ * Hover only — the background dots stay click-through so placing a search
+ * centre (and clicking anywhere in evaluation mode) keeps working.
+ */
+export function SiteHover({
+  sites,
+  bufferM,
+  theme,
+  pickLayers,
+  mode,
+}: {
+  sites: readonly Site[];
+  bufferM: number;
+  theme: Theme;
+  /** Layers whose dots open the details dialog — drives the card's hint line. */
+  pickLayers: readonly string[];
+  mode: AppMode;
+}) {
+  const { map, isLoaded } = useMap();
+
+  /** The dot features carry only what paint needs; hover wants the record. */
+  const byId = useMemo(
+    () => new Map(sites.map((site) => [site.site_id, site])),
+    [sites],
+  );
+
+  useEffect(() => {
+    if (!map || !isLoaded) return;
+
+    let popup: MapLibreGL.Popup | null = null;
+    /** `${site_id}|${layer}` of what the popup currently shows, if anything. */
+    let shown: string | null = null;
+
+    const clear = () => {
+      popup?.remove();
+      popup = null;
+      shown = null;
+    };
+
+    const handleMove = (e: MapLibreGL.MapMouseEvent) => {
+      // Facilities are drawn over the dot cloud and own their own popup, so
+      // whatever is visually on top wins rather than both firing at once.
+      if (
+        map.getLayer("facility-points") &&
+        map.queryRenderedFeatures(e.point, { layers: ["facility-points"] })
+          .length > 0
+      ) {
+        return clear();
+      }
+
+      const hit = pickSiteDot(map, e.point, HOVER_LAYERS);
+      if (!hit) return clear();
+
+      const siteId = hit.properties?.site_id;
+      const site = typeof siteId === "string" ? byId.get(siteId) : undefined;
+      if (!site) return clear();
+
+      const key = `${site.site_id}|${hit.layer.id}`;
+      if (popup && key === shown) return;
+
+      // Anchored to the site, not the cursor: the card then sits still while
+      // the pointer moves within a dot instead of jittering along with it.
+      const at: [number, number] = [site.longitude, site.latitude];
+      const html = siteCardHtml(
+        site,
+        bufferM,
+        theme,
+        clickHint(hit.layer.id, pickLayers, mode),
+      );
+
+      if (popup) {
+        popup.setLngLat(at).setHTML(html);
+      } else {
+        popup = new Popup({
+          closeButton: false,
+          closeOnClick: false,
+          offset: 12,
+          className: "polaris-site-popup",
+        })
+          .setLngLat(at)
+          .setHTML(html)
+          .addTo(map);
+      }
+      shown = key;
+    };
+
+    map.on("mousemove", handleMove);
+    map.on("mouseout", clear);
+    // A click hands over to the details dialog or the evaluation panel; the
+    // card would otherwise sit behind the modal and reappear on close.
+    map.on("click", clear);
+
+    return () => {
+      map.off("mousemove", handleMove);
+      map.off("mouseout", clear);
+      map.off("click", clear);
+      clear();
+    };
+  }, [map, isLoaded, byId, bufferM, theme, pickLayers, mode]);
+
+  return null;
+}
+
+/**
+ * What the card promises a click will do — never a guess: it is derived from
+ * the very `pickLayers` the click handler consults.
+ */
+function clickHint(
+  layerId: string,
+  pickLayers: readonly string[],
+  mode: AppMode,
+): string | null {
+  if (pickLayers.includes(layerId)) return "Click for the full breakdown";
+  // Evaluation mode keeps every click as a pick, and a click on a dot resolves
+  // to that same site — the breakdown lands in the panel instead of a dialog.
+  if (mode === "evaluation") return "Click to evaluate this site";
+  return null;
+}
+
+/** Same card vocabulary as <MarkerTooltip>, built as a string for MapLibre. */
+function siteCardHtml(
+  site: Site,
+  bufferM: number,
+  theme: Theme,
+  hint: string | null,
+): string {
+  const excluded = isShorelineExcluded(site, bufferM);
+  const swatch = excluded
+    ? EXCLUDED_HEX[theme]
+    : CLASS_HEX[site.suitability_class][theme];
+  const reason = ineligibilityReason(site, bufferM);
+
+  return (
+    `<div class="bg-popover text-popover-foreground max-w-60 rounded-lg border px-3 py-2 shadow-xl">` +
+      `<div class="flex items-center gap-1.5">` +
+        `<span class="size-2 shrink-0 rounded-full" style="background:${swatch}"></span>` +
+        `<p class="text-sm font-semibold">${escapeHtml(site.site_id)}</p>` +
+      `</div>` +
+      (site.barangay
+        ? `<p class="text-muted-foreground text-xs">${escapeHtml(site.barangay)}</p>`
+        : "") +
+      `<p class="mt-1 text-xs">Score ` +
+        `<span class="tabular font-semibold">${formatScore(site.score)}</span> ` +
+        `<span class="text-muted-foreground">(${escapeHtml(site.suitability_class)})</span>` +
+      `</p>` +
+      (reason
+        ? `<p class="text-suit-none mt-1 text-[11px]">Not eligible — ${escapeHtml(reason)}</p>`
+        : "") +
+      (hint
+        ? `<p class="text-muted-foreground mt-1 text-[11px]">${hint}</p>`
+        : "") +
+    `</div>`
+  );
+}
+
 /**
  * Central click/hover routing. A single map-level handler decides whether a
  * click landed on a selectable site dot or on open map, rather than relying on
@@ -408,14 +627,8 @@ export function MapInteractions({
   useEffect(() => {
     if (!map || !isLoaded) return;
 
-    const presentLayers = () => pickLayers.filter((id) => map.getLayer(id));
-
     const handleClick = (e: MapLibreGL.MapMouseEvent) => {
-      const layers = presentLayers();
-      const hits = layers.length
-        ? map.queryRenderedFeatures(e.point, { layers })
-        : [];
-      const siteId = hits[0]?.properties?.site_id;
+      const siteId = pickSiteDot(map, e.point, pickLayers)?.properties?.site_id;
 
       if (typeof siteId === "string") {
         onSelectSite(siteId);
@@ -425,11 +638,9 @@ export function MapInteractions({
     };
 
     const handleMove = (e: MapLibreGL.MapMouseEvent) => {
-      const layers = presentLayers();
-      const hits = layers.length
-        ? map.queryRenderedFeatures(e.point, { layers })
-        : [];
-      map.getCanvas().style.cursor = hits.length ? "pointer" : "crosshair";
+      map.getCanvas().style.cursor = pickSiteDot(map, e.point, pickLayers)
+        ? "pointer"
+        : "crosshair";
     };
 
     map.on("click", handleClick);
