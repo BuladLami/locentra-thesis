@@ -1,0 +1,17 @@
+{
+  "mean_deviation_raw": 0.01933984799131379,
+  "mean_abs_deviation_raw": 0.01933984799131379,
+  "max_abs_deviation_raw": 0.15000000000000002,
+  "spearman_rho": 0.779355430014142,
+  "spearman_rho_closed_form": 0.779355430014142,
+  "classification_change_pct": 73.68078175895765,
+  "sites_changed": 1131,
+  "jaccard": {
+    "5": 0.42857142857142855,
+    "10": 1.0,
+    "20": 0.7391304347826086,
+    "50": 0.5873015873015873
+  },
+  "gated_sites": 236,
+  "note": "Internal validation artefact. Never exported to the application."
+}

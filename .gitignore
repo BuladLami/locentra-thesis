@@ -48,11 +48,6 @@ updated osm/
 REVISIONS.md
 TRAINING_*.md
 
-# Training pipeline outputs — large model files and metrics generated during runs.
-# These are kept locally for reference and analysis but are not part of the app.
-# The webapp data files (candidate sites, boundaries, etc.) are copied to polaris/public/data.
-outputs_district/
-
 # Editor / OS cruft
 .DS_Store
 Thumbs.db

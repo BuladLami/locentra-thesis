@@ -1,0 +1,22 @@
+{
+  "service_weights": {
+    "building_density": 0.4,
+    "road_accessibility": 0.25,
+    "facility_distance": 0.15
+  },
+  "hazard_penalty_weights": {
+    "flood_susceptibility": 0.08,
+    "landslide_susceptibility": 0.07,
+    "storm_surge_susceptibility": 0.05
+  },
+  "thresholds": {
+    "tau1": 0.25,
+    "tau2": 0.4,
+    "tau3": 0.6
+  },
+  "shoreline_buffer_m": 50,
+  "grid_spacing_m": 250,
+  "building_density_radius_m": 300,
+  "random_state": 42,
+  "generated_utc": "2026-08-14T03:35:17.739813+00:00"
+}

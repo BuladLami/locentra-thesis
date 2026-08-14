@@ -1,0 +1,2 @@
+max_depth,max_features,min_samples_split,n_estimators,cv_mae_mean,cv_mae_std,cv_rmse_mean,cv_rmse_std,cv_r2_mean,cv_r2_std
+,1.0,2,500,0.013415134167084286,0.000730521146132088,0.02444367238944036,0.0014429388627054793,0.9492674012310871,0.005562251687876518

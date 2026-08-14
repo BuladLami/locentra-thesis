@@ -1,0 +1,23 @@
+ID,Formula,Expression,Manuscript section,Implemented by
+F1,Min–Max normalisation,x'ᵢ = (xᵢ − x_min)/(x_max − x_min),Min–Max Normalization,f1_minmax
+F2,Road accessibility metric,RAᵢ = 1 / (1 + dᵢ),Road Accessibility Metric,f2_road_accessibility
+F3,Hazard-integrated composite,Sᴮᵢ = w₁BD′ + w₂RA′ + w₃FD′ − w₄FL′ − w₅LS′ − w₆SS′,Baseline Composite Suitability Score,f3_composite_hazard_integrated
+F4,Service-only composite,Sᴬᵢ = w₁BD′ + w₂RA′ + w₃FD′,Baseline Composite Suitability Score,f4_composite_service_only
+F5,Baseline score rescaling,S′ᵢ = (Sᵢ − S_min)/(S_max − S_min),Baseline Score Rescaling,f5_rescale
+F6,Ensemble prediction,ŷ(x) = (1/B) Σⱼ Tⱼ(x),Random Forest Regression Model,f6_verify_ensemble_mean (verification)
+F7,Split criterion,"(p*, s*) = arg min [(nₗ/nᵥ)Var(yₗ) + (nᵣ/nᵥ)Var(yᵣ)]",Random Forest Regression Model,f7_verify_split_criterion (verification)
+F8,Mean Decrease in Impurity,MDI(p) = (1/B) Σⱼ Σᵥ (nᵥ/N)·ΔVarᵥ,Feature Importance,f8_mdi
+F9,Permutation importance,PI(p) = (1/T) Σₜ (MSEₜ − MSE₀),Feature Importance,f9_permutation_importance
+F10,Mean Absolute Error,MAE = (1/m) Σ |ŷᵢ − yᵢ|,Model Evaluation Metrics,f10_mae
+F11,Root Mean Squared Error,RMSE = √[(1/m) Σ (ŷᵢ − yᵢ)²],Model Evaluation Metrics,f11_rmse
+F12,Coefficient of Determination,R² = 1 − Σ(yᵢ−ŷᵢ)² / Σ(yᵢ−ȳ)²,Model Evaluation Metrics,f12_r2
+F13,Out-of-bag R²,R²_OOB over rows unseen by each bootstrap tree,Model Evaluation Metrics,RandomForestRegressor(oob_score=True)
+F14,Suitability classification,"four classes at τ₁=0.25, τ₂=0.40, τ₃=0.60",Suitability Classification,f14_classify
+F15,Intra-class percentile,Pᵢ = nᵤ / nᴄ; Pᵢ ≥ 0.50 → upper level,Hybrid Recommendation Level,f15_intraclass_percentile
+F16,Spearman's rank correlation,ρ = 1 − 6Σdᵢ² / [n(n²−1)],Internal Hazard Sensitivity Validation Measures,f16_spearman
+F17,Classification Change Percentage,C = (1/n) Σ 1[classᴬ ≠ classᴮ] × 100%,Internal Hazard Sensitivity Validation Measures,f17_classification_change_pct
+F18,Mean suitability score deviation,Δ̄ = (1/n) Σ (Sᴬᵢ − Sᴮᵢ),Appendix B,f18_mean_deviation
+F19,Top-N Jaccard similarity,J(N) = |Aₙ ∩ Bₙ| / |Aₙ ∪ Bₙ|,Appendix B,f19_jaccard_topn
+F20,Spatial difference mapping,Δᵢ = Sᴬᵢ − Sᴮᵢ,Appendix B,f20_spatial_difference
+F21,Population coverage improvement,ΔCoverage = %Cov_POLARIS − %Cov_Current,Tier 3 — External Validity,f21_delta_coverage
+F22,Hard eligibility gates,ineligible if d_coast < 50 m OR any hazard class = 3,Hard Eligibility Gates,f22_eligibility
