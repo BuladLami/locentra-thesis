@@ -21,3 +21,4 @@ F19,Top-N Jaccard similarity,J(N) = |Aₙ ∩ Bₙ| / |Aₙ ∪ Bₙ|,Appendix B
 F20,Spatial difference mapping,Δᵢ = Sᴬᵢ − Sᴮᵢ,Appendix B,f20_spatial_difference
 F21,Population coverage improvement,ΔCoverage = %Cov_POLARIS − %Cov_Current,Tier 3 — External Validity,f21_delta_coverage
 F22,Hard eligibility gates,ineligible if d_coast < 50 m OR any hazard class = 3,Hard Eligibility Gates,f22_eligibility
+F5-shared,Common-scale rescale (ablation classification only),"S'ᵢ = (Sᵢ − S_min^B)/(S_max^B − S_min^B), both configurations",Baseline Score Rescaling (post-run correction),f5_shared_rescale

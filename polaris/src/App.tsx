@@ -55,12 +55,16 @@ export default function App() {
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
   /** Mode the user asked for, held until they confirm discarding the current one. */
   const [pendingMode, setPendingMode] = useState<AppMode | null>(null);
-  // Both overlays start off, so the map opens on the basemap and the district
-  // outline. The 3,000-dot layer and the shoreline band are opt-in from the
-  // legend rather than a wall of colour on first paint.
+  // The scored-sites layer and the shoreline band stay off at first paint, so
+  // the map opens on the basemap and the district outline rather than a wall of
+  // colour; both are opt-in from the legend.
   const [showShorelineBuffer, setShowShorelineBuffer] = useState(false);
   const [showAllSites, setShowAllSites] = useState(false);
-  const [showFacilities, setShowFacilities] = useState(false);
+  // Facilities are the exception and start ON, per the panel: a reader judging
+  // a recommendation needs to see what already exists without discovering a
+  // toggle first, since "far from an existing facility" is a scoring factor.
+  // Still freely toggleable — this only changes the default.
+  const [showFacilities, setShowFacilities] = useState(true);
 
   /* ---- Dataset-derived ----------------------------------------------- */
   const metadata = bundle?.dataset.metadata ?? null;

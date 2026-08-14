@@ -47,6 +47,13 @@ export interface Site {
   longitude: number;
   /** Barangay name from OSM admin_level=10 polygons; `null` if unmatched. */
   barangay?: string | null;
+  /**
+   * True when the site's barangay has a below-district-median building
+   * footprint density, so `factors.building_density` likely understates real
+   * demand rather than reporting a genuinely empty area. The pipeline already
+   * says this in `interpretation`; the flag is the machine-readable form.
+   */
+  barangay_undermapped?: boolean;
   /** The single composite suitability score, 0–1. Closer to 1 = more suitable. */
   score: number;
   suitability_class: SuitabilityClass;

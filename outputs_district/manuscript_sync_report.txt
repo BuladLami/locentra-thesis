@@ -1,6 +1,6 @@
 ==============================================================================
   POLARIS — MANUSCRIPT SYNCHRONISATION REPORT
-  Generated 2026-08-14T04:35:00+00:00
+  Generated 2026-08-14T14:01:53+00:00
 ==============================================================================
   Every figure below replaces one currently printed in the manuscript.
   The previous single-barangay run is superseded IN FULL. Do not mix figures
@@ -10,11 +10,11 @@
   RESEARCH LOCALE / METHODOLOGY — study area and candidate grid
 ------------------------------------------------------------------------------
   Barangays resolved                 : 14 of 14
-  District area (from OSM polygons)  : 95.88 km²
+  District area (from OSM polygons)  : 93.46 km²
   Grid spacing                       : 250 m
   Building-density radius            : 300 m
-  Candidate sites  n                 : 1,535
-  Raw OSM elements read              : 36,556
+  Candidate sites  n                 : 1,502
+  Raw OSM elements read              : 36,363
   OSM snapshot date                  : 2026-07-29
 
 ------------------------------------------------------------------------------
@@ -27,75 +27,78 @@
   landslide_susceptibility     −0.07
   storm_surge_susceptibility   −0.05
   Thresholds                         : τ₁=0.25, τ₂=0.4, τ₃=0.6
-  Raw hazard-integrated score range  : [-0.1013, 0.3832]
-  Raw service-only score range       : [0.0124, 0.4371]
-  Predicted score range (exported)   : [0.073, 0.949]
+  Raw hazard-integrated score range  : [-0.1104, 0.3602]
+  Raw service-only score range       : [0.0123, 0.4369]
+  Predicted score range (exported)   : [0.035, 0.904]
 
 ------------------------------------------------------------------------------
   HARD ELIGIBILITY GATES
 ------------------------------------------------------------------------------
-  Shoreline setback (<50 m)          : 10 sites
-  High hazard on any layer           : 230 sites (15.0%)
-  Ineligible under either gate       : 236 sites (15.4%)
-  Highest-scoring site overall       : TALOMO_0520 (0.949), GATED
-  Highest-scoring eligible site      : TALOMO_1133 (0.820)
+  Shoreline setback (<50 m)          : 16 sites
+  High hazard on any layer           : 272 sites (18.1%)
+  Ineligible under either gate       : 275 sites (18.3%)
+  Highest-scoring site overall       : TALOMO_0618 (0.904), GATED
+  Highest-scoring eligible site      : TALOMO_0765 (0.823)
 
 ------------------------------------------------------------------------------
   SUITABILITY CLASSIFICATION
 ------------------------------------------------------------------------------
-  Highly Suitable            29  (  1.9%)
-  Moderately Suitable       233  ( 15.2%)
-  Low Suitability           974  ( 63.5%)
-  Not Suitable              299  ( 19.5%)
+  Highly Suitable            37  (  2.5%)
+  Moderately Suitable       306  ( 20.4%)
+  Low Suitability           919  ( 61.2%)
+  Not Suitable              240  ( 16.0%)
 
 ------------------------------------------------------------------------------
   TIER 2 — MODEL ACCURACY
 ------------------------------------------------------------------------------
   Estimator                          : Random Forest
   Hyperparameters                    : {'max_depth': None, 'max_features': 1.0, 'min_samples_split': 2, 'n_estimators': 500}
-  MAE (F10)                          : 0.0120
-  RMSE (F11)                         : 0.0225   (RMSE/MAE = 1.88)
-  R² (F12)                           : 0.9635
-  OOB R² (F13)                       : 0.9548
-  5-fold CV R²                       : 0.9493 ± 0.0056
-  Reconstruction |ŷ − S′| mean       : 0.0062; 0.98% deviate > 0.05
+  MAE (F10)                          : 0.0130
+  RMSE (F11)                         : 0.0204   (RMSE/MAE = 1.57)
+  R² (F12)                           : 0.9639
+  OOB R² (F13)                       : 0.9471
+  5-fold CV R²                       : 0.9433 ± 0.0157
+  Reconstruction |ŷ − S′| mean       : 0.0068; 1.40% deviate > 0.05
 
   Objective C — linear weighted overlay on the same partition:
      OLS R²                          : 1.000000
-     Random Forest R²                : 0.963467
+     Random Forest R²                : 0.963859
      Report the Random Forest as a faithful surrogate, NOT as outperforming
      the linear baseline. The target is linear by construction.
 
   Feature importance (MDI / permutation ΔMSE / specified weight):
-     building_density             0.4547 / 0.0114 / 0.40
-     road_accessibility           0.2134 / 0.0067 / 0.25
-     facility_distance            0.1406 / 0.0039 / 0.15
-     flood_susceptibility         0.0888 / 0.0032 / 0.08
-     landslide_susceptibility     0.0565 / 0.0012 / 0.07
-     storm_surge_susceptibility   0.0460 / 0.0011 / 0.05
+     building_density             0.4069 / 0.0083 / 0.40
+     road_accessibility           0.2055 / 0.0063 / 0.25
+     facility_distance            0.1442 / 0.0055 / 0.15
+     flood_susceptibility         0.1144 / 0.0025 / 0.08
+     landslide_susceptibility     0.0700 / 0.0023 / 0.07
+     storm_surge_susceptibility   0.0589 / 0.0018 / 0.05
 
 ------------------------------------------------------------------------------
   TIER 2 — INTERNAL HAZARD SENSITIVITY ABLATION
 ------------------------------------------------------------------------------
-  Spearman ρ (F16)                   : 0.7794
-  Classification change C (F17)      : 73.68% (1,131 sites)
-  Mean deviation Δ̄ (F18, raw)        : 0.0193
-  Jaccard J(N) (F19)                 : N=5: 0.429, N=10: 1.000, N=20: 0.739, N=50: 0.587
+  Spearman ρ (F16)                   : 0.7366
+  Classification change C (F17)      : 27.43% (412 sites)
+  Mean deviation Δ̄ (F18, raw)        : 0.0222
+  Jaccard J(N) (F19)                 : N=5: 0.250, N=10: 0.429, N=20: 0.667, N=50: 0.587
   Report ρ and C as describing the GRADUATED PENALTY ONLY. The gates are a
   separate, larger mechanism and must be reported alongside, never merged.
 
 ------------------------------------------------------------------------------
   TIER 3 — EXTERNAL VALIDITY
 ------------------------------------------------------------------------------
-  Population proxy validation        : PENDING
-  Facility concordance, upper 2 tiers: 40.6%
-  ΔCoverage at 2 km                 : -10.1 pp (POLARIS 89.3% vs current 99.3%)
-  ΔCoverage at 5 km                 : -1.2 pp (POLARIS 98.8% vs current 100.0%)
+  Population proxy validation        : COMPLETE
+     Pearson r                       : 0.7539
+     Spearman ρ                      : 0.8242
+     Mean absolute deviation         : 60.36%
+     Signed bias                     : -19.06%
+  Facility concordance, upper 2 tiers: 38.8%
+  ΔCoverage at 2 km                 : +0.5 pp (POLARIS 99.9% vs current 99.4%)
+  ΔCoverage at 5 km                 : +0.0 pp (POLARIS 100.0% vs current 100.0%)
 
 ------------------------------------------------------------------------------
   NOT SETTLED BY THIS RUN
 ------------------------------------------------------------------------------
-  [ ] PSA 2024 POPCEN workbook — Cell 16 reports PENDING without it.
   [ ] Threshold validation (τ₁, τ₂, τ₃) — expert confirmation, comparable
       published scheme, or natural-breaks derivation. Panel: Ma'am Regina.
   [ ] CHO confirmation of the High-hazard gate, and whether a High class on a

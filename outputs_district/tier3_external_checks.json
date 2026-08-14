@@ -1,23 +1,23 @@
 {
-  "facilities_total": 203,
-  "facilities_matched": 64,
+  "facilities_total_matched": 190,
+  "facilities_in_district": 67,
   "concordance_counts": {
-    "Highly Suitable": 11,
-    "Moderately Suitable": 15,
-    "Low Suitability": 25,
-    "Not Suitable": 13
+    "Highly Suitable": 10,
+    "Moderately Suitable": 16,
+    "Low Suitability": 37,
+    "Not Suitable": 4
   },
-  "concordance_upper_two_tiers_pct": 40.625,
-  "coverage": {
+  "concordance_upper_two_tiers_pct": 38.80597014925373,
+  "coverage_marginal": {
     "2000": {
-      "polaris_pct": 89.25238940727588,
-      "current_pct": 99.3048997015602,
-      "delta_pct": -10.052510294284318
+      "current_pct": 99.35045653626308,
+      "combined_pct": 99.8589562764457,
+      "marginal_gain_pct": 0.5084997401826143
     },
     "5000": {
-      "polaris_pct": 98.83646254391599,
       "current_pct": 100.0,
-      "delta_pct": -1.1635374560840148
+      "combined_pct": 100.0,
+      "marginal_gain_pct": 0.0
     }
   },
   "top_k_for_coverage": 20

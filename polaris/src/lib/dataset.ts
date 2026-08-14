@@ -1,5 +1,6 @@
 import type { FeatureCollection } from "geojson";
 
+import { isInsideGeometry } from "@/lib/geo";
 import type { PolarisDataset } from "@/types/polaris";
 
 /**
@@ -15,7 +16,11 @@ export interface PolarisBundle {
   dataset: PolarisDataset;
   boundary: FeatureCollection | null;
   coastline: FeatureCollection | null;
-  /** Existing health facilities — the referent for `facility_distance_m`. */
+  /**
+   * Existing health facilities, clipped to the district boundary for display.
+   * Not the full referent for `facility_distance_m` — that was measured against
+   * the pipeline's unclipped set, which extends past Talomo.
+   */
   facilities: FeatureCollection | null;
   /** Barangay names that actually contain at least one scored site. */
   barangays: BarangayEntry[];
@@ -85,6 +90,51 @@ function deriveBarangays(dataset: PolarisDataset): BarangayEntry[] {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/**
+ * Drops facilities that fall outside the district boundary.
+ *
+ * The training pipeline exports every health facility it pulled from OSM,
+ * which reaches across Davao City — the last district run carried 190, of which
+ * 141 sat outside Talomo (Cabantian, District B, Brokenshire and the like).
+ * Drawn on the map they read as context the study never claimed, and they pull
+ * the eye far outside the area the scores actually cover.
+ *
+ * This filter lives here rather than in the exported JSON on purpose: the data
+ * files are overwritten wholesale on every pipeline sync, so a fix applied to
+ * `talomo_facilities.json` would be undone by the next `outputs_district` drop.
+ *
+ * Note this is a *display* filter only. `facility_distance_m` was computed
+ * against the full set, and a facility just over the border legitimately serves
+ * people near it — so the scores are left exactly as the pipeline produced them.
+ */
+function facilitiesWithinBoundary(
+  facilities: FeatureCollection | null,
+  boundary: FeatureCollection | null,
+): FeatureCollection | null {
+  if (!facilities) return null;
+
+  // Without a boundary there is nothing to test against. Keep the full set
+  // rather than silently rendering an empty layer.
+  const outline = boundary?.features?.[0]?.geometry;
+  if (!outline) return facilities;
+
+  const kept = facilities.features.filter((feature) => {
+    if (feature.geometry?.type !== "Point") return false;
+    const [lon, lat] = feature.geometry.coordinates;
+    return isInsideGeometry(lon, lat, outline);
+  });
+
+  if (kept.length === facilities.features.length) return facilities;
+
+  console.info(
+    `[POLARIS] facilities layer: showing ${kept.length} of ` +
+      `${facilities.features.length} (dropped ` +
+      `${facilities.features.length - kept.length} outside Talomo)`,
+  );
+
+  return { ...facilities, features: kept };
+}
+
 async function fetchBundle(force: boolean): Promise<PolarisBundle> {
   const cacheBust = force ? `?t=${Date.now()}` : "";
 
@@ -107,7 +157,7 @@ async function fetchBundle(force: boolean): Promise<PolarisBundle> {
     dataset,
     boundary,
     coastline,
-    facilities,
+    facilities: facilitiesWithinBoundary(facilities, boundary),
     barangays: deriveBarangays(dataset),
     loadedAt: new Date(),
   };

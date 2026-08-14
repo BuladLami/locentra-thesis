@@ -134,21 +134,10 @@ export function MapLegend({
                     checked={showFacilities}
                     onChange={onToggleFacilities}
                     label="Existing health facilities"
-                    hint={facilityCount.toLocaleString()}
                     icon={<Cross className="size-4" />}
                   />
                 )}
               </div>
-
-              {facilityCount !== null && showFacilities && (
-                <p className="text-muted-foreground border-t pt-3 text-xs leading-relaxed">
-                  These are the facilities each site's “distance to nearest
-                  health facility” is measured against. They are drawn from a
-                  current OpenStreetMap extract, which may not match the extract
-                  the scores were computed from — treat them as context, not as
-                  a check on the numbers.
-                </p>
-              )}
             </div>
           </div>
         </div>

@@ -93,3 +93,58 @@ export function isInsideBounds(
     lat <= b.north + padDeg
   );
 }
+
+/** A GeoJSON linear ring: [lon, lat] pairs, first point repeated last. */
+type Ring = readonly (readonly number[])[];
+/** Outer ring first, then any holes. */
+type PolygonRings = readonly Ring[];
+
+/**
+ * Ray-casting test against a single ring, in raw lon/lat degrees.
+ *
+ * Talomo spans well under a degree and never crosses the antimeridian or a
+ * pole, so treating degrees as planar costs nothing here and keeps this
+ * dependency-free.
+ */
+function isInRing(lon: number, lat: number, ring: Ring): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** Inside the outer ring and outside every hole. */
+function isInPolygon(lon: number, lat: number, rings: PolygonRings): boolean {
+  if (rings.length === 0 || !isInRing(lon, lat, rings[0])) return false;
+  for (let i = 1; i < rings.length; i++) {
+    if (isInRing(lon, lat, rings[i])) return false;
+  }
+  return true;
+}
+
+/**
+ * Point-in-polygon against a (Multi)Polygon GeoJSON geometry.
+ *
+ * Returns `false` for any other geometry type, so callers that cannot prove
+ * containment should decide for themselves whether to keep or drop the point
+ * rather than relying on this to fail open.
+ */
+export function isInsideGeometry(
+  lon: number,
+  lat: number,
+  geometry: GeoJSON.Geometry | null | undefined,
+): boolean {
+  if (!geometry) return false;
+  if (geometry.type === "Polygon") {
+    return isInPolygon(lon, lat, geometry.coordinates);
+  }
+  if (geometry.type === "MultiPolygon") {
+    return geometry.coordinates.some((rings) => isInPolygon(lon, lat, rings));
+  }
+  return false;
+}
